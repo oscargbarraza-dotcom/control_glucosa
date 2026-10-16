@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "371154041496",
+    "project_id": "seguimiento-glucosa",
+    "storage_bucket": "seguimiento-glucosa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371154041496:android:cd5819a71849f4da9daeed",
+        "android_client_info": {
+          "package_name": "com.example.seguimiento_glucosa"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.seguimiento_glucosa",
+            "certificate_hash": "3b8c8ab35ae5b2d58aaa08667978820515fd65ae"
+          }
+        },
+        {
+          "client_id": "371154041496-p2aekm10mkqjvpitmof0pvo3rkc7m8cs.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA49hCtlUd8nA3M8cacnQiZmIjgRgNabmQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "371154041496-p2aekm10mkqjvpitmof0pvo3rkc7m8cs.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "371154041496-j670gohkjjcakfabastvh4h2flk0jld9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.seguimientoGlucosa"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
