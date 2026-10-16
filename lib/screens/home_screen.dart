@@ -12,6 +12,7 @@ import '../services/glucose_repository.dart';
 import '../services/health_glucose_import_repository.dart';
 import '../services/meal_repository.dart';
 import '../services/medication_repository.dart';
+import '../services/user_profile_repository.dart';
 import 'auth_screen.dart';
 import 'biometric_screen.dart';
 import 'glucose_screen.dart';
@@ -23,7 +24,9 @@ import 'medication_screen.dart';
 ///
 /// Muestra la tarjeta con la última medición de glucosa registrada (cargada
 /// desde [GlucoseRepository] al iniciar) y los accesos a los módulos de
-/// comida, medicamentos, biometría e historial.
+/// comida, medicamentos, biometría e historial. El título del `AppBar`
+/// saluda por nombre cuando el perfil de usuario (módulo de Biometría,
+/// pestaña Perfil) ya tiene un nombre a mostrar guardado.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -31,6 +34,7 @@ class HomeScreen extends StatefulWidget {
     this.mealRepository,
     this.medicationRepository,
     this.biometricRepository,
+    this.profileRepository,
     this.authRepository,
     this.backupRepository,
     this.enableCloudBackup = false,
@@ -58,6 +62,12 @@ class HomeScreen extends StatefulWidget {
   /// [SqliteBiometricRepository] sobre la misma base de datos compartida
   /// que [repository].
   final BiometricRepository? biometricRepository;
+
+  /// Repositorio del perfil de usuario (altura, fecha de nacimiento,
+  /// sexo biológico, nombre a mostrar). Si es `null`, se usa
+  /// [SqliteUserProfileRepository] sobre la misma base de datos
+  /// compartida que [repository].
+  final UserProfileRepository? profileRepository;
 
   /// Repositorio de autenticación. Si es `null`, se usa
   /// [FirebaseAuthRepository]. Permite inyectar una implementación de
@@ -119,6 +129,9 @@ class _HomeScreenState extends State<HomeScreen> {
   late final BiometricRepository _biometricRepository =
       widget.biometricRepository ??
       SqliteBiometricRepository.withDatabase(_sharedDatabase);
+  late final UserProfileRepository _profileRepository =
+      widget.profileRepository ??
+      SqliteUserProfileRepository.withDatabase(_sharedDatabase);
   late final AuthRepository _authRepository =
       widget.authRepository ?? FirebaseAuthRepository();
   // No usa `??` porque, a diferencia de los demás repositorios, el valor
@@ -222,7 +235,10 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => BiometricScreen(repository: _biometricRepository),
+        builder: (context) => BiometricScreen(
+          repository: _biometricRepository,
+          profileRepository: _profileRepository,
+        ),
       ),
     );
   }

@@ -26,6 +26,7 @@ import 'package:seguimiento_glucosa/models/glucose_measurement.dart';
 import 'package:seguimiento_glucosa/models/meal.dart';
 import 'package:seguimiento_glucosa/models/medication.dart';
 import 'package:seguimiento_glucosa/models/medication_intake.dart';
+import 'package:seguimiento_glucosa/models/user_profile.dart';
 import 'package:seguimiento_glucosa/screens/home_screen.dart';
 import 'package:seguimiento_glucosa/services/auth_repository.dart';
 import 'package:seguimiento_glucosa/services/backup_repository.dart';
@@ -34,6 +35,7 @@ import 'package:seguimiento_glucosa/services/glucose_import_repository.dart';
 import 'package:seguimiento_glucosa/services/glucose_repository.dart';
 import 'package:seguimiento_glucosa/services/meal_repository.dart';
 import 'package:seguimiento_glucosa/services/medication_repository.dart';
+import 'package:seguimiento_glucosa/services/user_profile_repository.dart';
 
 /// Repositorio en memoria usado solo en pruebas, para evitar llamadas al
 /// plugin real de `sqflite` durante los widget tests.
@@ -200,6 +202,26 @@ class _FakeBiometricRepository implements BiometricRepository {
   @override
   Future<void> clearMeasurements() async {
     _measurements.clear();
+  }
+}
+
+/// Repositorio de perfil de usuario en memoria usado solo en pruebas,
+/// para evitar llamadas al plugin real de `sqflite` durante los widget
+/// tests.
+class _FakeUserProfileRepository implements UserProfileRepository {
+  UserProfile? _profile;
+
+  @override
+  Future<UserProfile?> getProfile() async => _profile;
+
+  @override
+  Future<void> saveProfile(UserProfile profile) async {
+    _profile = profile;
+  }
+
+  @override
+  Future<void> clearProfile() async {
+    _profile = null;
   }
 }
 
@@ -650,6 +672,7 @@ void main() {
         home: HomeScreen(
           repository: _FakeGlucoseRepository(),
           biometricRepository: _FakeBiometricRepository(),
+          profileRepository: _FakeUserProfileRepository(),
         ),
       ),
     );
@@ -659,6 +682,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Registrar'), findsOneWidget);
+    expect(find.text('Perfil'), findsOneWidget);
     expect(find.text('Historial'), findsOneWidget);
 
     // TabBarView no construye páginas fuera del viewport por defecto: hay
@@ -685,6 +709,7 @@ void main() {
         home: HomeScreen(
           repository: _FakeGlucoseRepository(),
           biometricRepository: biometricRepository,
+          profileRepository: _FakeUserProfileRepository(),
         ),
       ),
     );
@@ -721,6 +746,7 @@ void main() {
           home: HomeScreen(
             repository: _FakeGlucoseRepository(),
             biometricRepository: biometricRepository,
+            profileRepository: _FakeUserProfileRepository(),
           ),
         ),
       );
@@ -775,6 +801,7 @@ void main() {
           home: HomeScreen(
             repository: _FakeGlucoseRepository(),
             biometricRepository: _FakeBiometricRepository(),
+            profileRepository: _FakeUserProfileRepository(),
           ),
         ),
       );
@@ -798,6 +825,79 @@ void main() {
         find.text('Completa ambos valores de presión, o ninguno.'),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets('Guardar el perfil con altura lo persiste', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final profileRepository = _FakeUserProfileRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: _FakeGlucoseRepository(),
+          biometricRepository: _FakeBiometricRepository(),
+          profileRepository: profileRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Biometría'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Perfil'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Altura (cm)'),
+      '170',
+    );
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Perfil guardado.'), findsOneWidget);
+    expect((await profileRepository.getProfile())?.heightCm, 170);
+  });
+
+  testWidgets(
+    'Con el perfil ya guardado, el historial de Biometría muestra el IMC',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final biometricRepository = _FakeBiometricRepository();
+      final profileRepository = _FakeUserProfileRepository();
+      await profileRepository.saveProfile(const UserProfile(heightCm: 170));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            biometricRepository: biometricRepository,
+            profileRepository: profileRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Biometría'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Peso corporal (kg)'),
+        '72.25',
+      );
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      // IMC = 72.25 / (1.70 ^ 2) = 25.0 → categoría "Sobrepeso".
+      expect(find.textContaining('IMC: 25.0 (Sobrepeso)'), findsOneWidget);
     },
   );
 

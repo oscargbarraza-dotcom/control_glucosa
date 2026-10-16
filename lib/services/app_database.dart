@@ -3,7 +3,8 @@ import 'package:sqflite/sqflite.dart';
 
 /// Gestiona la única conexión SQLite compartida por todos los repositorios
 /// de la app (mediciones de glucosa, comidas, medicamentos, biometría,
-/// etc.), incluyendo la creación y migración de esquema.
+/// perfil de usuario, etc.), incluyendo la creación y migración de
+/// esquema.
 ///
 /// Centralizar la apertura de la base de datos aquí evita que cada
 /// repositorio defina su propia lógica de versión/`onCreate`, lo que sería
@@ -38,7 +39,7 @@ class AppDatabase {
   /// Versión actual del esquema. Cada tabla nueva debe sumar su creación en
   /// [_onCreate] (instalaciones nuevas) y en [_onUpgrade] (instalaciones
   /// existentes), incrementando este número.
-  static const _schemaVersion = 5;
+  static const _schemaVersion = 6;
 
   final DatabaseFactory _databaseFactory;
   final String? _databasePath;
@@ -85,6 +86,7 @@ class AppDatabase {
     await db.execute(_createMedicationIntakesTable);
     await db.execute(_createMedicationIntakeItemsTable);
     await db.execute(_createBiometricMeasurementsTable);
+    await db.execute(_createUserProfileTable);
   }
 
   Future<void> _upgrade(Database db, int oldVersion) async {
@@ -111,6 +113,9 @@ class AppDatabase {
       await db.execute(
         'ALTER TABLE biometric_measurements ADD COLUMN heart_rate_bpm INTEGER',
       );
+    }
+    if (oldVersion < 6) {
+      await db.execute(_createUserProfileTable);
     }
   }
 
@@ -186,6 +191,16 @@ class AppDatabase {
       heart_rate_bpm INTEGER,
       measured_at TEXT NOT NULL,
       comment TEXT
+    )
+  ''';
+
+  static const _createUserProfileTable = '''
+    CREATE TABLE user_profile (
+      id INTEGER PRIMARY KEY,
+      height_cm REAL NOT NULL,
+      birth_date TEXT,
+      biological_sex TEXT,
+      display_name TEXT
     )
   ''';
 }

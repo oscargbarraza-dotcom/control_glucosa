@@ -406,8 +406,9 @@ Decisiones de diseño registradas:
 
 ### Registro de biometría
 
-Implementado (peso corporal obligatorio; presión arterial y frecuencia
-cardíaca opcionales; IMC pendiente).
+Implementado (peso corporal obligatorio; presión arterial, frecuencia
+cardíaca e IMC opcionales — el IMC se calcula a partir del perfil de
+usuario).
 
 Se creó el módulo de Biometría, siguiendo el modelo simple de
 `GlucoseMeasurement` (no el modelo relacional catálogo+items de
@@ -429,15 +430,43 @@ Comidas/Medicamentos), porque no hay múltiples valores por registro:
   misma `AppDatabase` compartida (versión de esquema 4), reutilizada
   también por el resto de repositorios. En la versión de esquema 5 se
   agregaron las columnas `systolic_pressure`, `diastolic_pressure` y
-  `heart_rate_bpm` (todas `INTEGER` nullable) mediante `ALTER TABLE`.
+  `heart_rate_bpm` (todas `INTEGER` nullable) mediante `ALTER TABLE`. En
+  la versión de esquema 6 se agregó la tabla `user_profile` (perfil de
+  usuario, ver más abajo).
+* `lib/models/user_profile.dart`: modelo inmutable `UserProfile`
+  (`heightCm` obligatorio; `birthDate`, `biologicalSex`, `displayName`
+  opcionales), el enum `BiologicalSex` (`female`/`male`/
+  `preferNotToSay`) con su extensión `label`, el método
+  `UserProfile.bmiFor(weightKg)` que calcula el IMC
+  (`peso / altura_m²`), el enum `BmiCategory`
+  (`underweight`/`normal`/`overweight`/`obese`) con su extensión
+  `label`, y la función `bmiCategoryFor(bmi)` que clasifica un IMC ya
+  calculado según los rangos estándar de la OMS para adultos (sin
+  diferenciar por edad/sexo).
+* `lib/services/user_profile_repository.dart`: interfaz
+  `UserProfileRepository` (`getProfile`, `saveProfile`, `clearProfile`)
+  e implementación `SqliteUserProfileRepository` (constructores normal y
+  `.withDatabase`), sobre la tabla `user_profile`. Al no haber soporte
+  multiusuario, usa el patrón "singleton row" (`id = 1` fijo,
+  `saveProfile` con `ConflictAlgorithm.replace`) en lugar de un
+  `AUTOINCREMENT` como el resto de tablas.
 * `lib/screens/biometric_screen.dart` (`BiometricScreen`): pantalla con
   pestañas **Registrar** (peso en kg obligatorio; presión sistólica y
   diastólica opcionales, completadas juntas o ninguna; frecuencia
-  cardíaca opcional; comentario opcional) e **Historial** (lista de
+  cardíaca opcional; comentario opcional), **Perfil** (altura en cm
+  obligatoria; nombre a mostrar, sexo biológico y fecha de nacimiento —
+  vía `showDatePicker` — opcionales) e **Historial** (lista de
   mediciones guardadas, de la más reciente a la más antigua, mostrando
-  presión y frecuencia cardíaca cuando existen). Tras guardar, cambia
-  automáticamente a la pestaña Historial y muestra una confirmación
-  (`SnackBar`), mismo patrón que `MedicationScreen`.
+  el IMC — calculado combinando cada peso con la altura del perfil
+  vigente, si existe —, presión y frecuencia cardíaca cuando existen).
+  Tras guardar un peso, cambia automáticamente a la pestaña Historial y
+  muestra una confirmación (`SnackBar`), mismo patrón que
+  `MedicationScreen`; guardar el perfil muestra su propia confirmación
+  sin cambiar de pestaña.
+* `lib/screens/home_screen.dart`: nuevo parámetro `profileRepository`
+  (mismo patrón que `biometricRepository`: si es `null`, usa
+  `SqliteUserProfileRepository` sobre la base de datos compartida), que
+  se pasa a `BiometricScreen` al navegar a ella.
 
 Decisiones de diseño registradas:
 
@@ -446,8 +475,21 @@ Decisiones de diseño registradas:
   peso, en lugar de crear un tipo de medición separado: evita duplicar
   el concepto de "registro" y mantiene la migración de esquema simple
   (`ALTER TABLE ADD COLUMN`, sin tocar restricciones existentes).
-* El IMC queda pendiente para una iteración futura, porque requiere
-  altura/perfil de usuario, que todavía no existe en la app.
+* El IMC se calcula en tiempo de lectura (`UserProfile.bmiFor`) a partir
+  del peso de cada `BiometricMeasurement` y la altura del perfil
+  vigente, en lugar de guardarse como columna en
+  `biometric_measurements`: evita que el IMC quede desactualizado si el
+  usuario corrige su altura más adelante, y evita recalcular/migrar el
+  historial existente al hacerlo.
+* El perfil de usuario (`UserProfile`) es un registro único local
+  (patrón "singleton row" en SQLite), no una entidad con historial como
+  `BiometricMeasurement`: no tiene sentido guardar "versiones" de la
+  altura de una persona de la misma forma que un historial de pesos.
+* Se amplió el perfil más allá de la altura mínima necesaria para el
+  IMC (roadmap: "altura, entre otros datos"), agregando fecha de
+  nacimiento, sexo biológico y nombre a mostrar, como base para
+  funcionalidades futuras (clasificación de IMC por edad/sexo, saludo
+  personalizado) sin requerir otra migración de esquema a corto plazo.
 * La validación de presión arterial exige que sistólica y diastólica se
   completen juntas (ambas vacías, o ambas con valor): no tiene sentido
   guardar solo una de las dos.
@@ -456,8 +498,9 @@ Decisiones de diseño registradas:
   Comidas/Medicamentos, porque un registro de peso no agrupa múltiples
   mediciones a la vez.
 * `BiometricScreen` es autocontenida con pestañas propias
-  Registrar/Historial, mismo patrón que `MealScreen`/`MedicationScreen`,
-  para mantener cada módulo de dominio aislado y testeable por separado.
+  Registrar/Perfil/Historial, mismo patrón que
+  `MealScreen`/`MedicationScreen`, para mantener cada módulo de dominio
+  aislado y testeable por separado.
 
 ---
 
@@ -935,13 +978,20 @@ Ideas futuras:
 
 ## Usuarios/perfiles
 
-No implementado.
+Parcialmente implementado.
+
+* Autenticación (Firebase Auth, correo/contraseña y Google): hecha, ver
+  roadmap punto 13.
+* Perfil de usuario (`UserProfile`: altura, fecha de nacimiento, sexo
+  biológico, nombre a mostrar): hecho, ver roadmap punto 16 y módulo de
+  Biometría (pestaña Perfil). Es un único perfil local (patrón
+  "singleton row" en SQLite), independiente de la cuenta de Firebase
+  Auth: no está ligado al `uid` del usuario autenticado.
 
 Pendiente:
 
-* Autenticación.
-* Perfil de usuario.
-* Datos separados por usuario.
+* Datos separados por usuario (multiusuario real): el perfil de SQLite
+  sigue siendo único por dispositivo, no por cuenta autenticada.
 
 ---
 
@@ -1308,6 +1358,38 @@ los asigna el repositorio al persistir.
 
 ---
 
+## lib/models/user_profile.dart
+
+Función:
+
+Modelo inmutable `UserProfile` (heightCm, birthDate, biologicalSex,
+displayName; solo `heightCm` es obligatorio), el enum `BiologicalSex`
+con su extensión `label`, el método `UserProfile.bmiFor(weightKg)` que
+calcula el IMC, el enum `BmiCategory` con su extensión `label`, y la
+función `bmiCategoryFor(bmi)` que clasifica un IMC ya calculado.
+
+---
+
+## lib/services/user_profile_repository.dart
+
+Función:
+
+Capa de persistencia del perfil de usuario (un único registro local,
+sin soporte multiusuario).
+
+Contiene:
+
+* `UserProfileRepository`: interfaz abstracta (`getProfile`,
+  `saveProfile`, `clearProfile`).
+* `SqliteUserProfileRepository`: implementación basada en `sqflite`,
+  sobre la tabla `user_profile`, usando el patrón "singleton row"
+  (`id = 1` fijo; `saveProfile` usa `ConflictAlgorithm.replace` en
+  lugar de distinguir entre crear y actualizar). Soporta los mismos
+  parámetros de inyección que `SqliteBiometricRepository`
+  (`factory`/`databasePath`/`singleInstance`/`.withDatabase`).
+
+---
+
 # Estado de compilación
 
 ## Estado actual
@@ -1394,8 +1476,7 @@ Prioridad media:
     Registrar/Historial).~~ ✅ Hecho.
 11. ~~Ampliar el módulo de Biometría con presión arterial y frecuencia
     cardíaca (opcionales, dentro del mismo registro de peso).~~ ✅ Hecho.
-    El IMC queda pendiente (ver punto 16): requiere un perfil de usuario
-    con altura, aún no existente.
+    El IMC se agregó en el punto 16, junto con el perfil de usuario.
 
 Prioridad futura:
 
@@ -1411,12 +1492,74 @@ Prioridad futura:
 15. ✅ Integración con sensores/CGM (importación manual, de solo lectura,
     desde Google Health Connect/Apple Health vía el plugin `health`).
     Ver Historial de cambios.
-16. Crear perfil de usuario (altura, entre otros datos) y agregar el
-    cálculo de IMC al módulo de Biometría.
+16. ✅ Perfil de usuario (`UserProfile`: altura obligatoria; fecha de
+    nacimiento, sexo biológico y nombre a mostrar opcionales), nueva
+    pestaña Perfil en el módulo de Biometría, y cálculo de IMC
+    (`UserProfile.bmiFor`) mostrado en el Historial de Biometría. Ver
+    Historial de cambios.
 
 ---
 
 # Historial de cambios
+
+## 2026-08-21 — Perfil de usuario e IMC en el módulo de Biometría
+
+* Decisión de alcance (confirmada con el usuario antes de implementar):
+  se eligió un perfil "completo" (altura + fecha de nacimiento + sexo
+  biológico + nombre a mostrar), en lugar del mínimo indispensable
+  (solo altura), para sentar base a funcionalidades futuras
+  (clasificación de IMC por edad/sexo, saludo personalizado) sin
+  requerir otra migración de esquema a corto plazo.
+* `lib/models/user_profile.dart` (nuevo): modelo inmutable `UserProfile`
+  (`heightCm` obligatorio; `birthDate`, `biologicalSex`, `displayName`
+  opcionales, con `copyWith`/`==`/`hashCode` y flags `clearBirthDate`/
+  `clearBiologicalSex`/`clearDisplayName`), el enum `BiologicalSex`
+  (`female`/`male`/`preferNotToSay`) con su extensión `label`, el
+  método `UserProfile.bmiFor(weightKg)` (IMC = peso / altura_m²,
+  `null` si la altura no es positiva), el enum `BmiCategory`
+  (`underweight`/`normal`/`overweight`/`obese`) con su extensión
+  `label`, y `bmiCategoryFor(bmi)` (rangos estándar de la OMS para
+  adultos).
+* `lib/services/user_profile_repository.dart` (nuevo): interfaz
+  `UserProfileRepository` (`getProfile`, `saveProfile`, `clearProfile`)
+  e implementación `SqliteUserProfileRepository` (constructores normal
+  y `.withDatabase`, mismo patrón de inyección que
+  `SqliteBiometricRepository`), sobre la tabla `user_profile` con
+  patrón "singleton row" (`id = 1` fijo; `saveProfile` usa
+  `ConflictAlgorithm.replace`), ya que la app no tiene soporte
+  multiusuario.
+* `lib/services/app_database.dart`: tabla `user_profile` (`id`,
+  `height_cm REAL NOT NULL`, `birth_date`, `biological_sex`,
+  `display_name`), sumada en la versión de esquema 6.
+* `lib/screens/biometric_screen.dart`: nueva pestaña **Perfil** (entre
+  Registrar e Historial) con el formulario de altura (obligatoria),
+  nombre a mostrar, sexo biológico (`DropdownButtonFormField`) y fecha
+  de nacimiento (`showDatePicker`), todos opcionales salvo la altura.
+  Guardar el perfil muestra una confirmación (`SnackBar`) sin cambiar
+  de pestaña. La pestaña Historial ahora muestra el IMC de cada peso
+  (y su categoría, p. ej. "IMC: 25.0 (Sobrepeso)") cuando el perfil ya
+  tiene altura guardada; si no, simplemente no se muestra. El IMC se
+  calcula en tiempo de lectura (no se guarda en
+  `biometric_measurements`), para que no quede desactualizado si el
+  usuario corrige su altura más adelante.
+* `lib/screens/home_screen.dart`: nuevo parámetro `profileRepository`
+  (mismo patrón que `biometricRepository`: si es `null`, usa
+  `SqliteUserProfileRepository` sobre la base de datos compartida),
+  pasado a `BiometricScreen` al navegar a ella.
+* Tests: 14 tests nuevos — 6 unitarios de `UserProfile` (cálculo de
+  IMC, clasificación por rangos, `copyWith`) en
+  `test/models/user_profile_test.dart`; 6 unitarios de
+  `SqliteUserProfileRepository` (persistencia, patrón singleton row,
+  `clearProfile`) en `test/services/user_profile_repository_test.dart`;
+  2 de widgets en `test/widget_test.dart` (guardar el perfil lo
+  persiste, el Historial de Biometría muestra el IMC combinando perfil
+  + peso). Se agregó `_FakeUserProfileRepository` en memoria y se
+  inyectó en los tests existentes de `BiometricScreen` para no tocar
+  `sqflite` real. 67/67 tests OK, `flutter analyze` limpio, `dart
+  format` aplicado, build APK debug exitoso.
+* `PROJECT_CONTEXT.md` actualizado (paso #16 del roadmap marcado como
+  hecho; secciones "Registro de biometría" y "Usuarios/perfiles"
+  actualizadas).
 
 ## 2026-08-20 (1) — Importación manual de glucosa desde sensores/CGM (Health Connect/Apple Health)
 

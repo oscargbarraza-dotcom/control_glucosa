@@ -3,7 +3,24 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
-> Actualizado el 2026-08-20 tras agregar la importación manual de
+> Actualizado el 2026-08-21 tras agregar el perfil de usuario
+> (`UserProfile`/`UserProfileRepository`/`SqliteUserProfileRepository`,
+> en `lib/models/user_profile.dart` y
+> `lib/services/user_profile_repository.dart`) y el cálculo de IMC
+> (`UserProfile.bmiFor` + `bmiCategoryFor`) en el módulo de Biometría.
+> `BiometricScreen` pasó de 2 a 3 pestañas: **Registrar**, **Perfil**
+> (nueva, con altura obligatoria y fecha de nacimiento/sexo
+> biológico/nombre a mostrar opcionales) e **Historial** (ahora muestra
+> el IMC de cada peso cuando el perfil tiene altura guardada).
+> `HomeScreen` ganó el parámetro `profileRepository` (mismo patrón de
+> inyección que `biometricRepository`, sin flag `enable*` porque no
+> depende de ningún plugin externo: es solo SQLite local). El perfil se
+> persiste en la nueva tabla `user_profile` (versión de esquema 6 de
+> `AppDatabase`), con patrón "singleton row" (`id = 1` fijo) ya que la
+> app no tiene soporte multiusuario. Ningún otro repositorio de datos
+> de salud cambió: SQLite sigue siendo el almacenamiento principal.
+>
+> Cambio previo: se agregó la importación manual de
 > glucosa desde sensores/CGM (`GlucoseImportRepository`/
 > `HealthGlucoseImportRepository`, vía el plugin `health` sobre Google
 > Health Connect/Apple Health), **opcional** y de **solo lectura**
@@ -141,6 +158,10 @@ lib/main.dart
       │    └─ imports: lib/models/glucose_measurement.dart
       │    └─ imports: lib/services/glucose_import_repository.dart
       │    └─ imports: lib/services/glucose_repository.dart
+      └─ imports: lib/services/user_profile_repository.dart
+      │    └─ imports: package:sqflite/sqflite.dart
+      │    └─ imports: lib/models/user_profile.dart
+      │    └─ imports: lib/services/app_database.dart
       └─ imports: lib/screens/glucose_screen.dart
       │    └─ imports: package:flutter/material.dart
       │    └─ imports: lib/models/glucose_measurement.dart
@@ -171,7 +192,9 @@ lib/main.dart
       │    └─ imports: package:flutter/material.dart
       │    └─ imports: package:intl/intl.dart
       │    └─ imports: lib/models/biometric_measurement.dart
+      │    └─ imports: lib/models/user_profile.dart
       │    └─ imports: lib/services/biometric_repository.dart
+      │    └─ imports: lib/services/user_profile_repository.dart
       └─ imports: lib/screens/auth_screen.dart
            └─ imports: package:flutter/material.dart
            └─ imports: lib/models/app_user.dart
@@ -190,13 +213,20 @@ test/widget_test.dart
  └─ imports: package:seguimiento_glucosa/models/meal.dart
  └─ imports: package:seguimiento_glucosa/models/medication.dart
  └─ imports: package:seguimiento_glucosa/models/medication_intake.dart
+ └─ imports: package:seguimiento_glucosa/models/user_profile.dart
  └─ imports: package:seguimiento_glucosa/screens/home_screen.dart
  └─ imports: package:seguimiento_glucosa/services/auth_repository.dart
  └─ imports: package:seguimiento_glucosa/services/backup_repository.dart
  └─ imports: package:seguimiento_glucosa/services/biometric_repository.dart
+ └─ imports: package:seguimiento_glucosa/services/glucose_import_repository.dart
  └─ imports: package:seguimiento_glucosa/services/glucose_repository.dart
  └─ imports: package:seguimiento_glucosa/services/meal_repository.dart
  └─ imports: package:seguimiento_glucosa/services/medication_repository.dart
+ └─ imports: package:seguimiento_glucosa/services/user_profile_repository.dart
+
+test/models/user_profile_test.dart
+ └─ imports: package:flutter_test/flutter_test.dart
+ └─ imports: package:seguimiento_glucosa/models/user_profile.dart
 
 test/services/glucose_repository_test.dart
  └─ imports: package:flutter_test/flutter_test.dart
@@ -223,6 +253,12 @@ test/services/biometric_repository_test.dart
  └─ imports: package:sqflite_common_ffi/sqflite_ffi.dart
  └─ imports: package:seguimiento_glucosa/models/biometric_measurement.dart
  └─ imports: package:seguimiento_glucosa/services/biometric_repository.dart
+
+test/services/user_profile_repository_test.dart
+ └─ imports: package:flutter_test/flutter_test.dart
+ └─ imports: package:sqflite_common_ffi/sqflite_ffi.dart
+ └─ imports: package:seguimiento_glucosa/models/user_profile.dart
+ └─ imports: package:seguimiento_glucosa/services/user_profile_repository.dart
 ```
 
 ### Representación Mermaid
@@ -239,6 +275,7 @@ graph TD
     home --> mealRepo["lib/services/meal_repository.dart"]
     home --> medRepo["lib/services/medication_repository.dart"]
     home --> bioRepo["lib/services/biometric_repository.dart"]
+    home --> profileRepo["lib/services/user_profile_repository.dart"]
     home --> authRepo["lib/services/auth_repository.dart"]
     home --> authRepoImpl
     home --> backupRepo["lib/services/backup_repository.dart"]
@@ -261,6 +298,8 @@ graph TD
     intake --> medication
     bioRepo --> db
     bioRepo --> bioModel["lib/models/biometric_measurement.dart"]
+    profileRepo --> db
+    profileRepo --> profileModel["lib/models/user_profile.dart"]
     history --> model
     history --> repo
     history --> chart["lib/widgets/glucose_line_chart.dart"]
@@ -273,6 +312,8 @@ graph TD
     medScreen --> medRepo
     bioScreen --> bioModel
     bioScreen --> bioRepo
+    bioScreen --> profileModel
+    bioScreen --> profileRepo
     authRepoImpl --> authUser["lib/models/app_user.dart"]
     authRepoImpl --> authRepo
     authRepo --> authUser
@@ -297,11 +338,13 @@ graph TD
     widget_test --> medication
     widget_test --> intake
     widget_test --> bioModel
+    widget_test --> profileModel
     widget_test --> home
     widget_test --> repo
     widget_test --> mealRepo
     widget_test --> medRepo
     widget_test --> bioRepo
+    widget_test --> profileRepo
     widget_test --> authRepo
     widget_test --> backupRepo
     repo_test["test/services/glucose_repository_test.dart"] --> model
@@ -314,6 +357,9 @@ graph TD
     med_repo_test["test/services/medication_repository_test.dart"] --> medication
     med_repo_test --> intake
     med_repo_test --> medRepo
+    profile_test["test/models/user_profile_test.dart"] --> profileModel
+    profile_repo_test["test/services/user_profile_repository_test.dart"] --> profileModel
+    profile_repo_test --> profileRepo
 
     pkg_material["package:flutter/material.dart"]
     pkg_test["package:flutter_test/flutter_test.dart"]
@@ -343,6 +389,7 @@ graph TD
     mealRepo --> pkg_sqflite
     medRepo --> pkg_sqflite
     bioRepo --> pkg_sqflite
+    profileRepo --> pkg_sqflite
     widget_test --> pkg_material
     widget_test --> pkg_test
     widget_test --> pkg_fl_chart
@@ -354,22 +401,30 @@ graph TD
     med_repo_test --> pkg_sqflite_ffi
     bio_repo_test --> pkg_test
     bio_repo_test --> pkg_sqflite_ffi
+    profile_test --> pkg_test
+    profile_repo_test --> pkg_test
+    profile_repo_test --> pkg_sqflite_ffi
 ```
 
 `lib/models/glucose_measurement.dart`, `lib/models/food.dart`,
 `lib/models/meal.dart`, `lib/models/medication.dart`,
 `lib/models/medication_intake.dart`,
-`lib/models/biometric_measurement.dart` y `lib/models/app_user.dart` no
-dependen de Flutter: son módulos de Dart puro, lo que facilita
-probarlos de forma aislada sin `flutter_test`. `lib/services/app_database.dart`,
+`lib/models/biometric_measurement.dart`, `lib/models/user_profile.dart`
+y `lib/models/app_user.dart` no dependen de Flutter: son módulos de
+Dart puro, lo que facilita probarlos de forma aislada sin
+`flutter_test` (ver `test/models/user_profile_test.dart`, que prueba
+`UserProfile.bmiFor`/`bmiCategoryFor` sin `flutter_test` ni `sqflite`).
+`lib/services/app_database.dart`,
 `lib/services/glucose_repository.dart`,
 `lib/services/meal_repository.dart`,
-`lib/services/medication_repository.dart` y
-`lib/services/biometric_repository.dart` tampoco dependen de Flutter
+`lib/services/medication_repository.dart`,
+`lib/services/biometric_repository.dart` y
+`lib/services/user_profile_repository.dart` tampoco dependen de Flutter
 (solo de `sqflite`/`path`), por lo que `SqliteGlucoseRepository`,
-`SqliteMealRepository`, `SqliteMedicationRepository` y
-`SqliteBiometricRepository` se pueden probar directamente con
-`sqflite_common_ffi` sin `flutter_test`. `lib/services/auth_repository.dart`
+`SqliteMealRepository`, `SqliteMedicationRepository`,
+`SqliteBiometricRepository` y `SqliteUserProfileRepository` se pueden
+probar directamente con `sqflite_common_ffi` sin `flutter_test`.
+`lib/services/auth_repository.dart`
 (la interfaz) tampoco depende de Flutter ni de Firebase, solo de
 `lib/models/app_user.dart`, lo que permite el `_FakeAuthRepository` de
 `test/widget_test.dart` sin tocar `firebase_auth`/`google_sign_in`.
@@ -437,7 +492,7 @@ HomeScreen (StatefulWidget)                  [lib/screens/home_screen.dart]
       ├─ _openHistoryScreen() → Navigator.push(HistoryScreen(repository: _repository, importRepository: _importRepository))
       ├─ _openMealScreen() → Navigator.push(MealScreen(repository: _mealRepository))
       ├─ _openMedicationScreen() → Navigator.push(MedicationScreen(repository: _medicationRepository))
-      ├─ _openBiometricScreen() → Navigator.push(BiometricScreen(repository: _biometricRepository))
+      ├─ _openBiometricScreen() → Navigator.push(BiometricScreen(repository: _biometricRepository, profileRepository: _profileRepository))
       ├─ _openAuthScreen() → Navigator.push(AuthScreen(repository: _authRepository, backupRepository: _backupRepository))
       └─ build() → Scaffold
            ├─ AppBar(actions: [IconButton(Icons.account_circle_outlined, tooltip: 'Cuenta', onPressed: _openAuthScreen)])
@@ -773,18 +828,38 @@ SqliteBiometricRepository (implements BiometricRepository)  [lib/services/biomet
  ├─ _db: Future<Database>    # abre/reutiliza la conexión de forma perezosa
  └─ _fromRow / _toRow         # mapeo fila SQLite ↔ BiometricMeasurement
 
+UserProfileRepository (interfaz abstracta)   [lib/services/user_profile_repository.dart]
+ ├─ getProfile() → Future<UserProfile?>
+ ├─ saveProfile(UserProfile) → Future<void>   # reemplaza cualquier perfil anterior
+ └─ clearProfile() → Future<void>
+
+SqliteUserProfileRepository (implements UserProfileRepository)  [lib/services/user_profile_repository.dart]
+ ├─ constructor({factory, databasePath, singleInstance}) / .withDatabase(AppDatabase)
+ ├─ tabla `user_profile` (id, height_cm, birth_date, biological_sex, display_name)
+ │    # patrón "singleton row": id = 1 fijo (_singletonId)
+ ├─ saveProfile() → db.insert(..., conflictAlgorithm: ConflictAlgorithm.replace)
+ ├─ _db: Future<Database>    # abre/reutiliza la conexión de forma perezosa
+ └─ _fromRow / _toRow         # mapeo fila SQLite ↔ UserProfile
+
 BiometricScreen (StatefulWidget)             [lib/screens/biometric_screen.dart]
- └─ constructor({required repository})
+ └─ constructor({required repository, required profileRepository})
  └─ createState() → _BiometricScreenState (with SingleTickerProviderStateMixin)
-      ├─ _tabController: TabController(length: 2)
-      ├─ _measurementsFuture = repository.getAllMeasurements()
+      ├─ _tabController: TabController(length: 3)
+      ├─ _profileFuture = profileRepository.getProfile()
+      ├─ _historyDataFuture = _loadHistoryData()
+      │     → ({measurements: await repository.getAllMeasurements(),
+      │         profile: await profileRepository.getProfile()})
       ├─ _handleMeasurementSaved(measurement) → await repository.addMeasurement(measurement)
-      │     → setState(_measurementsFuture = ...) → _tabController.animateTo(1) → SnackBar
+      │     → setState(_historyDataFuture = ...) → _tabController.animateTo(2) → SnackBar
+      ├─ _handleProfileSaved(profile) → await profileRepository.saveProfile(profile)
+      │     → setState(_profileFuture = ..., _historyDataFuture = ...) → SnackBar
+      │     (no cambia de pestaña)
       └─ build() → Scaffold
-           ├─ AppBar('Biometría') + TabBar(['Registrar', 'Historial'])
+           ├─ AppBar('Biometría') + TabBar(['Registrar', 'Perfil', 'Historial'])
            └─ TabBarView
                 ├─ _BiometricForm(onSave: _handleMeasurementSaved)
-                └─ _BiometricHistoryList(measurementsFuture: _measurementsFuture)
+                ├─ _ProfileSection(profileFuture: _profileFuture, onSave: _handleProfileSaved)
+                └─ _BiometricHistoryList(historyDataFuture: _historyDataFuture)
 
 _BiometricForm (StatefulWidget, privado)     [lib/screens/biometric_screen.dart]
  ├─ _weightController, _systolicController, _diastolicController,
@@ -805,16 +880,37 @@ _BiometricForm (StatefulWidget, privado)     [lib/screens/biometric_screen.dart]
       └─ ElevatedButton('Guardar') → onPressed: _save
 
 _BiometricHistoryList (StatelessWidget, privado)  [lib/screens/biometric_screen.dart]
- └─ build() → FutureBuilder<List<BiometricMeasurement>>
+ └─ build() → FutureBuilder<_HistoryData>   # typedef ({measurements, profile})
       ├─ cargando → CircularProgressIndicator
       ├─ vacío → Text('Todavía no hay mediciones registradas.')
-      └─ con datos → ListView.separated(_BiometricTile por cada medición)
+      └─ con datos → ListView.separated(_BiometricTile(measurement, profile)
+           por cada medición)
 
 _BiometricTile (StatelessWidget, privado)    [lib/screens/biometric_screen.dart]
  └─ build() → ListTile('{weightKg} kg', fecha/hora +
+      IMC ('IMC: X.X (categoría)', si profile?.bmiFor(weightKg) != null) +
       presión ('Presión: X/Y mmHg', si hasBloodPressure) +
       frecuencia cardíaca ('Frecuencia cardíaca: Z lpm', si existe) +
       comentario)
+
+_ProfileSection (StatelessWidget, privado)   [lib/screens/biometric_screen.dart]
+ └─ build() → FutureBuilder<UserProfile?>
+      └─ listo → _ProfileForm(profile: snapshot.data, onSave: onSave)
+
+_ProfileForm (StatefulWidget, privado)       [lib/screens/biometric_screen.dart]
+ ├─ _heightController, _displayNameController: TextEditingController
+ ├─ _birthDate: DateTime?, _biologicalSex: BiologicalSex?
+ ├─ _validateHeight(String?) → String?       # rango 50–250 cm
+ ├─ _pickBirthDate() → showDatePicker(firstDate: hace 120 años, lastDate: hoy)
+ ├─ _save() → valida Form → construye UserProfile(heightCm, birthDate?,
+ │    biologicalSex?, displayName?) → widget.onSave(profile)
+ └─ build() → Form
+      ├─ Icon(badge_outlined)
+      ├─ TextFormField('Altura (cm)', validator: _validateHeight)
+      ├─ TextFormField('Nombre a mostrar', opcional)
+      ├─ DropdownButtonFormField<BiologicalSex>('Sexo biológico', opcional)
+      ├─ ListTile('Fecha de nacimiento', onTap: _pickBirthDate)
+      └─ ElevatedButton('Guardar') → onPressed: _save
 
 BiometricMeasurement (clase inmutable)       [lib/models/biometric_measurement.dart]
  ├─ id: int?
@@ -827,6 +923,23 @@ BiometricMeasurement (clase inmutable)       [lib/models/biometric_measurement.d
  ├─ hasBloodPressure: bool   # systolicPressure != null && diastolicPressure != null
  └─ copyWith(..., clearSystolicPressure, clearDiastolicPressure,
       clearHeartRateBpm), ==, hashCode, toString()
+
+UserProfile (clase inmutable)                [lib/models/user_profile.dart]
+ ├─ heightCm: double   # único campo obligatorio
+ ├─ birthDate: DateTime?
+ ├─ biologicalSex: BiologicalSex?
+ ├─ displayName: String?
+ ├─ bmiFor(weightKg) → double?   # peso / (heightCm/100)², null si heightCm <= 0
+ └─ copyWith(..., clearBirthDate, clearBiologicalSex, clearDisplayName),
+      ==, hashCode, toString()
+
+BiologicalSex (enum)                         [lib/models/user_profile.dart]
+ └─ female | male | preferNotToSay   # extensión .label
+
+BmiCategory (enum)                           [lib/models/user_profile.dart]
+ ├─ underweight | normal | overweight | obese   # extensión .label
+ └─ bmiCategoryFor(double bmi) → BmiCategory   # función top-level,
+      rangos OMS: <18.5 underweight, <25 normal, <30 overweight, resto obese
 ```
 
 ### Representación Mermaid (navegación)
@@ -861,8 +974,12 @@ flowchart LR
     BS -- "Tab 'Registrar'" --> BF["_BiometricForm\n(peso + presión/FC opcionales)"]
     BF -- "Guardar: onSave(measurement)" --> BS
     BS -- "addMeasurement(measurement)" --> RB[(SQLite\nbiometric_measurements)]
-    BS -- "animateTo(1)" --> BH[_BiometricHistoryList]
-    BH -- "getAllMeasurements()" --> RB
+    BS -- "animateTo(2)" --> BH[_BiometricHistoryList]
+    BH -- "getAllMeasurements() + getProfile()" --> RB
+    BH -- "bmiFor(weightKg) por fila" --> RP
+    BS -- "Tab 'Perfil'" --> PF["_ProfileForm\n(altura obligatoria)"]
+    PF -- "Guardar: onSave(profile)" --> BS
+    BS -- "saveProfile(profile)" --> RP[(SQLite\nuser_profile)]
     B -- tap ícono 'Cuenta' --> AS[AuthScreen]
     AS -- "authStateChanges()" --> FB[(Firebase Auth)]
     AS -- "¿usuario autenticado?" --> AU{"user != null"}
@@ -899,6 +1016,7 @@ seguimiento_glucosa/
 │   │   ├── medication.dart       → Medication, DoseUnit
 │   │   ├── medication_intake.dart → MedicationIntake, MedicationIntakeItem
 │   │   ├── biometric_measurement.dart → BiometricMeasurement
+│   │   ├── user_profile.dart     → UserProfile, BiologicalSex, BmiCategory
 │   │   └── app_user.dart         → AppUser
 │   ├── screens/
 │   │   ├── home_screen.dart     → HomeScreen, _GlucoseCard, MenuButton
@@ -906,7 +1024,7 @@ seguimiento_glucosa/
 │   │   ├── history_screen.dart  → HistoryScreen (pestañas Lista/Gráfico)
 │   │   ├── meal_screen.dart     → MealScreen (pestañas Registrar/Historial)
 │   │   ├── medication_screen.dart → MedicationScreen (pestañas Registrar/Historial)
-│   │   ├── biometric_screen.dart → BiometricScreen (pestañas Registrar/Historial)
+│   │   ├── biometric_screen.dart → BiometricScreen (pestañas Registrar/Perfil/Historial)
 │   │   └── auth_screen.dart     → AuthScreen (_AccountView / _AuthForm)
 │   ├── widgets/
 │   │   └── glucose_line_chart.dart → GlucoseLineChart (fl_chart)
@@ -916,6 +1034,7 @@ seguimiento_glucosa/
 │       ├── meal_repository.dart    → MealRepository, SqliteMealRepository
 │       ├── medication_repository.dart → MedicationRepository, SqliteMedicationRepository
 │       ├── biometric_repository.dart → BiometricRepository, SqliteBiometricRepository
+│       ├── user_profile_repository.dart → UserProfileRepository, SqliteUserProfileRepository
 │       ├── auth_repository.dart    → AuthRepository, AuthException
 │       ├── firebase_auth_repository.dart → FirebaseAuthRepository
 │       ├── backup_repository.dart  → BackupRepository, BackupException
@@ -923,12 +1042,15 @@ seguimiento_glucosa/
 │       ├── glucose_import_repository.dart → GlucoseImportRepository, HealthImportException
 │       └── health_glucose_import_repository.dart → HealthGlucoseImportRepository
 ├── test/
-│   ├── widget_test.dart     → OK (30 tests, HomeScreen + HistoryScreen + MealScreen + MedicationScreen + BiometricScreen + AuthScreen + respaldo/restauración + importación CGM)
+│   ├── widget_test.dart     → OK (HomeScreen + HistoryScreen + MealScreen + MedicationScreen + BiometricScreen (perfil/IMC) + AuthScreen + respaldo/restauración + importación CGM)
+│   ├── models/
+│   │   └── user_profile_test.dart → OK (7 tests, UserProfile.bmiFor/bmiCategoryFor/copyWith, sin Flutter ni sqflite)
 │   └── services/
 │       ├── glucose_repository_test.dart    → OK (5 tests, SqliteGlucoseRepository con sqflite_common_ffi)
 │       ├── meal_repository_test.dart       → OK (5 tests, SqliteMealRepository con sqflite_common_ffi)
 │       ├── medication_repository_test.dart → OK (6 tests, SqliteMedicationRepository con sqflite_common_ffi)
-│       └── biometric_repository_test.dart  → OK (7 tests, SqliteBiometricRepository con sqflite_common_ffi)
+│       ├── biometric_repository_test.dart  → OK (7 tests, SqliteBiometricRepository con sqflite_common_ffi)
+│       └── user_profile_repository_test.dart → OK (5 tests, SqliteUserProfileRepository con sqflite_common_ffi)
 ├── analysis_options.yaml    → flutter_lints ^6.0.0 (reglas por defecto)
 ├── firebase.json            → mapeo de apps FlutterFire + reglas de Firestore (generado/editado)
 ├── firestore.rules          → cada usuario solo lee/escribe backups/{su_propio_uid}
@@ -958,8 +1080,8 @@ seguimiento_glucosa/
 | 10 | Sin visualización gráfica de la evolución de glucosa | — | ✅ Resuelto (`fl_chart`, pestaña "Gráfico" en `HistoryScreen`) |
 | 11 | Sin módulo de registro de comidas | — | ✅ Resuelto (`Food`/`Meal`/`MealFoodItem`, `MealRepository`, `MealScreen`) |
 | 12 | Sin módulo de registro de medicamentos | — | ✅ Resuelto (`Medication`/`MedicationIntake`/`MedicationIntakeItem`, `MedicationRepository`, `MedicationScreen`) |
-| 13 | Sin módulo de biometría | — | ✅ Resuelto parcialmente (`BiometricMeasurement`, `BiometricRepository`, `BiometricScreen`; peso corporal obligatorio, presión arterial y frecuencia cardíaca opcionales ya implementados; IMC pendiente de un perfil de usuario con altura) |
-| 14 | Biometría sin IMC (requiere altura) | — | ⏳ Pendiente (roadmap punto 16: crear perfil de usuario con altura, luego calcular IMC) |
+| 13 | Sin módulo de biometría | — | ✅ Resuelto (`BiometricMeasurement`, `BiometricRepository`, `BiometricScreen`; peso corporal obligatorio, presión arterial, frecuencia cardíaca e IMC opcionales ya implementados) |
+| 14 | Biometría sin IMC (requiere altura) | — | ✅ Resuelto (`UserProfile`/`UserProfileRepository`/`SqliteUserProfileRepository`, nueva pestaña Perfil en `BiometricScreen`, `UserProfile.bmiFor` + `bmiCategoryFor` mostrados en el Historial) |
 | 15 | Sin base para autenticación/sincronización (Firebase) | — | ✅ Resuelto (`firebase_core` inicializado en `main.dart`; SQLite sigue como almacenamiento principal) |
 | 16 | `ios/Runner/GoogleService-Info.plist` no generado por `flutterfire configure` en Windows | ios/Runner.xcodeproj/project.pbxproj | ✅ Resuelto manualmente (descargado con `firebase apps:sdkconfig IOS` y enlazado a mano en `project.pbxproj`; pendiente de verificación real en Xcode/macOS, no disponible en este entorno) |
 | 17 | Sin autenticación de usuarios | — | ✅ Resuelto (`AppUser`, `AuthRepository`/`FirebaseAuthRepository`, `AuthScreen`; correo/contraseña y Google, opcional — no bloquea el resto de la app) |
@@ -968,19 +1090,18 @@ seguimiento_glucosa/
 | 20 | Respaldo/restauración sin probar en dispositivo/emulador real | — | ⏳ Pendiente (validado por `flutter analyze`/`flutter test`/`flutter build apk --debug`, pero no con una ejecución interactiva contra Firestore real) |
 | 21 | Sin integración con sensores/CGM | — | ✅ Resuelto (`GlucoseImportRepository`/`HealthGlucoseImportRepository`, importación manual de solo lectura desde Google Health Connect/Apple Health vía el plugin `health`; botón "Importar desde sensor" en `HistoryScreen`, solo con `importRepository` inyectado) |
 | 22 | Importación desde sensores/CGM sin probar en dispositivo/emulador real | — | ⏳ Pendiente (validado por `flutter analyze`/`flutter test`/`flutter build apk --debug`, pero no con una ejecución interactiva contra Health Connect real ni con datos de prueba reales) |
+| 23 | Perfil de usuario sin soporte multiusuario real | — | ⏳ Pendiente a sabiendas (patrón "singleton row" en `user_profile`: un único perfil por dispositivo, independiente del `uid` de Firebase Auth; suficiente para el alcance actual de la app) |
 
-Verificación ejecutada tras el último cambio (importación manual desde sensores/CGM):
+Verificación ejecutada tras el último cambio (perfil de usuario e IMC):
 
 ```text
-flutter pub get → agrega health y sus dependencias
-                   (carp_serializable, device_info_plus, json_annotation)
-dart format lib test → Formatted 33 files (3 changed)
+dart format lib test → Formatted 4 files (4 changed)
 flutter analyze  → No issues found!
-flutter test     → All tests passed! (53/53: 47 anteriores + 6 nuevos
-                    de importación desde sensores/CGM, sin ninguna regresión)
+flutter test     → All tests passed! (67/67: 53 anteriores + 14 nuevos
+                    de perfil de usuario/IMC, sin ninguna regresión)
 flutter build apk --debug → √ Built build\app\outputs\flutter-apk\app-debug.apk
-                    (compilación real exitosa con health, tras subir
-                    minSdk de Android a 26)
+                    (compilación real exitosa, sin cambios de dependencias
+                    nativas: solo una tabla SQLite nueva, _schemaVersion = 6)
 ```
 
 ---
