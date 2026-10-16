@@ -1408,13 +1408,83 @@ Prioridad futura:
     disponible solo con sesión iniciada. SQLite sigue siendo el
     almacenamiento principal; no hay sincronización automática ni
     bidireccional en tiempo real. Ver Historial de cambios.
-15. Integración con sensores/CGM si aplica.
+15. ✅ Integración con sensores/CGM (importación manual, de solo lectura,
+    desde Google Health Connect/Apple Health vía el plugin `health`).
+    Ver Historial de cambios.
 16. Crear perfil de usuario (altura, entre otros datos) y agregar el
     cálculo de IMC al módulo de Biometría.
 
 ---
 
 # Historial de cambios
+
+## 2026-08-20 (1) — Importación manual de glucosa desde sensores/CGM (Health Connect/Apple Health)
+
+* Decisiones de alcance (confirmadas con el usuario antes de
+  implementar):
+  * Se evaluaron 3 vías para integrar datos de sensores/CGM: (a) la
+    capa de salud del sistema operativo (Google Health Connect en
+    Android, Apple Health en iOS) vía el plugin `health`, agnóstica
+    de fabricante y testeable con datos de prueba sin hardware real;
+    (b) la API directa de un fabricante (p. ej. Dexcom), que exige
+    cuenta developer, aprobación y OAuth2, y solo sirve para ese
+    fabricante; (c) BLE directo al sensor, inviable sin el SDK
+    propietario de cada fabricante. Se eligió la opción (a).
+  * Alcance V1: solo **importación** (lectura), simétrico al patrón ya
+    usado por el respaldo en la nube (botón manual, no sincronización
+    automática ni bidireccional). La app nunca escribe en Health
+    Connect/Apple Health, solo lee mediciones ya existentes.
+  * Deduplicación: no existe un identificador estable compartido entre
+    el historial local (IDs autoincrementales de SQLite) y la
+    plataforma de salud, así que se usa la combinación de fecha/hora
+    exacta + valor como clave para evitar importar la misma medición
+    dos veces en importaciones repetidas (ventana de 30 días hacia
+    atrás en cada importación).
+* `pubspec.yaml`: dependencia `health: ^13.3.2` (wrapper de Health
+  Connect/HealthKit). Requiere `minSdk 26` en Android (antes
+  `flutter.minSdkVersion`), actualizado en
+  `android/app/build.gradle.kts`.
+* `android/app/src/main/AndroidManifest.xml`: permiso
+  `android.permission.health.READ_BLOOD_GLUCOSE` (solo lectura), el
+  `activity-alias` y los `intent-filter`/`<queries>` que exige Health
+  Connect para la pantalla de permisos y para detectar si la app
+  Health Connect está instalada.
+* `ios/Runner/Info.plist`: `NSHealthShareUsageDescription` y
+  `NSHealthUpdateUsageDescription` (HealthKit).
+* `lib/services/glucose_import_repository.dart`: interfaz abstracta
+  `GlucoseImportRepository` (`isAvailable`, `requestPermission`,
+  `importMeasurements`) y `HealthImportException`, siguiendo el mismo
+  patrón que `AuthRepository`/`BackupRepository`.
+* `lib/services/health_glucose_import_repository.dart`:
+  `HealthGlucoseImportRepository`, implementación basada en el plugin
+  `health`. Lee `HealthDataType.BLOOD_GLUCOSE` (convertido a
+  `MILLIGRAM_PER_DECILITER`) y agrega al `GlucoseRepository` las
+  mediciones que no estén ya presentes según la clave de
+  deduplicación. Solo llama a métodos de lectura del plugin
+  (`configure`, `hasPermissions`, `requestAuthorization` con acceso
+  `READ`, `getHealthDataFromTypes`), nunca a `writeHealthData`.
+* `lib/screens/history_screen.dart`: nuevo botón "Importar desde
+  sensor" (ícono `Icons.sync`) en el `AppBar`, visible solo si se
+  inyecta un `importRepository`. Solicita disponibilidad y permiso
+  antes de importar, y muestra el resultado (mediciones importadas,
+  sin novedades, Health Connect no disponible, permiso denegado, o
+  error) en un `SnackBar`.
+* `lib/screens/home_screen.dart`: nuevos parámetros `importRepository`
+  y `enableHealthImport` (mismo patrón que `backupRepository`/
+  `enableCloudBackup`): por defecto `enableHealthImport` es `false`
+  para no tocar el plugin `health` real en los widget tests;
+  `main.dart` lo activa explícitamente.
+* Tests: 6 tests nuevos en `test/widget_test.dart` con un
+  `_FakeGlucoseImportRepository` en memoria (sin botón visible sin
+  `importRepository`, importación exitosa reflejada en el historial,
+  sin mediciones nuevas, Health Connect no disponible, permiso
+  denegado, error de importación con mensaje legible). 53/53 tests
+  OK, `flutter analyze` limpio, build APK debug exitoso.
+* `PROJECT_CONTEXT.md` actualizado (paso #15 del roadmap marcado como
+  hecho).
+* Pendiente de verificación interactiva en un dispositivo/emulador
+  Android real con Health Connect instalado (no disponible en este
+  entorno); ver sección de deuda técnica.
 
 ## 2026-08-19 (9) — Respaldo/restauración manual en la nube (Cloud Firestore)
 

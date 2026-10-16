@@ -2,8 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/glucose_measurement.dart';
+import '../services/glucose_import_repository.dart';
 import '../services/glucose_repository.dart';
 import '../widgets/glucose_line_chart.dart';
+
+/// Ventana de tiempo hacia atrás que cubre cada importación manual desde
+/// sensores/CGM. La deduplicación por fecha/hora y valor
+/// (`HealthGlucoseImportRepository`) hace seguro repetir la importación
+/// sin crear duplicados, así que no es necesario recordar la fecha de la
+/// última importación.
+const Duration _healthImportLookback = Duration(days: 30);
 
 /// Pantalla que muestra el historial completo de mediciones de glucosa, en
 /// dos vistas: **Lista** (de la más reciente a la más antigua) y
@@ -12,10 +20,20 @@ import '../widgets/glucose_line_chart.dart';
 /// Ambas vistas consumen [GlucoseRepository.getAllMeasurements] una sola
 /// vez al abrir la pantalla.
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key, required this.repository});
+  const HistoryScreen({
+    super.key,
+    required this.repository,
+    this.importRepository,
+  });
 
   /// Repositorio desde el que se cargan las mediciones.
   final GlucoseRepository repository;
+
+  /// Repositorio de importación manual desde sensores/CGM (Health
+  /// Connect/Apple Health). Si es `null`, no se muestra el botón
+  /// correspondiente (p. ej. en tests que no necesitan probar esa
+  /// funcionalidad).
+  final GlucoseImportRepository? importRepository;
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -23,11 +41,66 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   late Future<List<GlucoseMeasurement>> _measurementsFuture;
+  bool _isImporting = false;
 
   @override
   void initState() {
     super.initState();
     _measurementsFuture = widget.repository.getAllMeasurements();
+  }
+
+  Future<void> _importFromHealth() async {
+    final importRepository = widget.importRepository;
+    if (importRepository == null || _isImporting) {
+      return;
+    }
+
+    setState(() {
+      _isImporting = true;
+    });
+
+    String message;
+    try {
+      final available = await importRepository.isAvailable();
+      if (!available) {
+        message =
+            'Health Connect no está disponible en este dispositivo. '
+            'Instálalo desde la tienda de aplicaciones e intenta '
+            'nuevamente.';
+      } else {
+        final granted = await importRepository.requestPermission();
+        if (!granted) {
+          message = 'Permiso de lectura de glucosa denegado.';
+        } else {
+          final imported = await importRepository.importMeasurements(
+            since: DateTime.now().subtract(_healthImportLookback),
+          );
+          message = imported == 0
+              ? 'No hay mediciones nuevas para importar.'
+              : 'Se importaron $imported medición(es) nueva(s).';
+          if (imported > 0) {
+            setState(() {
+              _measurementsFuture = widget.repository.getAllMeasurements();
+            });
+          }
+        }
+      }
+    } on HealthImportException catch (e) {
+      message = e.message;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isImporting = false;
+        });
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -37,6 +110,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Historial'),
+          actions: [
+            if (widget.importRepository != null)
+              IconButton(
+                icon: _isImporting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.sync),
+                tooltip: 'Importar desde sensor',
+                onPressed: _isImporting ? null : _importFromHealth,
+              ),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Lista', icon: Icon(Icons.list)),

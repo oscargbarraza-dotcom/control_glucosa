@@ -30,6 +30,7 @@ import 'package:seguimiento_glucosa/screens/home_screen.dart';
 import 'package:seguimiento_glucosa/services/auth_repository.dart';
 import 'package:seguimiento_glucosa/services/backup_repository.dart';
 import 'package:seguimiento_glucosa/services/biometric_repository.dart';
+import 'package:seguimiento_glucosa/services/glucose_import_repository.dart';
 import 'package:seguimiento_glucosa/services/glucose_repository.dart';
 import 'package:seguimiento_glucosa/services/meal_repository.dart';
 import 'package:seguimiento_glucosa/services/medication_repository.dart';
@@ -314,6 +315,43 @@ class _FakeBackupRepository implements BackupRepository {
   @override
   Future<DateTime?> getLastBackupTime() async =>
       hasBackup ? DateTime(2026, 1, 1) : null;
+}
+
+/// Repositorio de importación desde sensores/CGM en memoria usado solo
+/// en pruebas, para evitar llamadas al plugin real `health`.
+///
+/// [importMeasurements] agrega las mediciones de [pending] a
+/// [glucoseRepository], imitando lo que hace la implementación real al
+/// encontrar datos nuevos en Health Connect/Apple Health.
+class _FakeGlucoseImportRepository implements GlucoseImportRepository {
+  _FakeGlucoseImportRepository(this.glucoseRepository);
+
+  final GlucoseRepository glucoseRepository;
+  bool available = true;
+  bool permissionGranted = true;
+  List<GlucoseMeasurement> pending = const [];
+  HealthImportException? failWith;
+  int importCallCount = 0;
+
+  @override
+  Future<bool> isAvailable() async => available;
+
+  @override
+  Future<bool> requestPermission() async => permissionGranted;
+
+  @override
+  Future<int> importMeasurements({required DateTime since}) async {
+    if (failWith != null) {
+      throw failWith!;
+    }
+    importCallCount++;
+    final toImport = pending;
+    pending = const [];
+    for (final measurement in toImport) {
+      await glucoseRepository.addMeasurement(measurement);
+    }
+    return toImport.length;
+  }
 }
 
 void main() {
@@ -1079,6 +1117,181 @@ void main() {
       find.text(
         'No se pudo respaldar en la nube. Verifica tu conexión e '
         'intenta nuevamente.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'Sin importRepository, HistoryScreen no muestra el botón de importar',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomeScreen(repository: _FakeGlucoseRepository())),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Historial'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Importar desde sensor'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Importar desde sensor agrega las mediciones nuevas al historial',
+    (WidgetTester tester) async {
+      final glucoseRepository = _FakeGlucoseRepository();
+      final importRepository = _FakeGlucoseImportRepository(glucoseRepository)
+        ..pending = [
+          GlucoseMeasurement(
+            value: 123,
+            moment: GlucoseMoment.now,
+            measuredAt: DateTime(2026, 1, 1, 8),
+            comment: 'Importado desde Health Connect.',
+          ),
+        ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: glucoseRepository,
+            importRepository: importRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Historial'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Importar desde sensor'));
+      await tester.pumpAndSettle();
+
+      expect(importRepository.importCallCount, 1);
+      expect(
+        find.text('Se importaron 1 medición(es) nueva(s).'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('123 mg/dL'), findsOneWidget);
+    },
+  );
+
+  testWidgets('Importar desde sensor sin mediciones nuevas muestra el mensaje '
+      'correspondiente', (WidgetTester tester) async {
+    final glucoseRepository = _FakeGlucoseRepository();
+    final importRepository = _FakeGlucoseImportRepository(glucoseRepository);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          importRepository: importRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Historial'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Importar desde sensor'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('No hay mediciones nuevas para importar.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Si Health Connect no está disponible, se informa sin intentar '
+      'importar', (WidgetTester tester) async {
+    final glucoseRepository = _FakeGlucoseRepository();
+    final importRepository = _FakeGlucoseImportRepository(glucoseRepository)
+      ..available = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          importRepository: importRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Historial'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Importar desde sensor'));
+    await tester.pumpAndSettle();
+
+    expect(importRepository.importCallCount, 0);
+    expect(
+      find.textContaining('Health Connect no está disponible'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Si se deniega el permiso de lectura, se informa sin importar', (
+    WidgetTester tester,
+  ) async {
+    final glucoseRepository = _FakeGlucoseRepository();
+    final importRepository = _FakeGlucoseImportRepository(glucoseRepository)
+      ..permissionGranted = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          importRepository: importRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Historial'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Importar desde sensor'));
+    await tester.pumpAndSettle();
+
+    expect(importRepository.importCallCount, 0);
+    expect(
+      find.text('Permiso de lectura de glucosa denegado.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Un error de importación muestra un mensaje legible', (
+    WidgetTester tester,
+  ) async {
+    final glucoseRepository = _FakeGlucoseRepository();
+    final importRepository = _FakeGlucoseImportRepository(glucoseRepository)
+      ..failWith = const HealthImportException(
+        'No se pudieron leer las mediciones de glucosa. Verifica el '
+        'permiso concedido e intenta nuevamente.',
+      );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          importRepository: importRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Historial'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Importar desde sensor'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'No se pudieron leer las mediciones de glucosa. Verifica el '
+        'permiso concedido e intenta nuevamente.',
       ),
       findsOneWidget,
     );

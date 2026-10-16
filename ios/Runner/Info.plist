@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Seguimiento Glucosa puede leer tus mediciones de glucosa guardadas en Salud para importarlas a tu historial.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Seguimiento Glucosa no escribe datos en Salud; solo lee tus mediciones de glucosa existentes.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

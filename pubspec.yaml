@@ -62,6 +62,13 @@ dependencies:
   # principal; Firestore solo guarda una copia de respaldo por usuario.
   cloud_firestore: ^7.0.0
 
+  # Importación manual de glucosa desde sensores/CGM (roadmap punto 15),
+  # vía Google Health Connect (Android) y Apple HealthKit (iOS). Requiere
+  # minSdk 26 en Android (ver android/app/build.gradle.kts). SQLite sigue
+  # siendo el almacenamiento principal; esta dependencia solo lee datos
+  # de salud ya existentes en la plataforma, nunca escribe en ella.
+  health: ^13.3.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

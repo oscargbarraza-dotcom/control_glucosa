@@ -45,7 +45,11 @@ class SeguimientoGlucosaApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Seguimiento Glucosa',
       theme: ThemeData(primarySwatch: Colors.deepPurple),
-      home: HomeScreen(authRepository: authRepository, enableCloudBackup: true),
+      home: HomeScreen(
+        authRepository: authRepository,
+        enableCloudBackup: true,
+        enableHealthImport: true,
+      ),
     );
   }
 }

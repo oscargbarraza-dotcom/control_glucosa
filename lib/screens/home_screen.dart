@@ -7,7 +7,9 @@ import '../services/backup_repository.dart';
 import '../services/biometric_repository.dart';
 import '../services/firebase_auth_repository.dart';
 import '../services/firestore_backup_repository.dart';
+import '../services/glucose_import_repository.dart';
 import '../services/glucose_repository.dart';
+import '../services/health_glucose_import_repository.dart';
 import '../services/meal_repository.dart';
 import '../services/medication_repository.dart';
 import 'auth_screen.dart';
@@ -32,6 +34,8 @@ class HomeScreen extends StatefulWidget {
     this.authRepository,
     this.backupRepository,
     this.enableCloudBackup = false,
+    this.importRepository,
+    this.enableHealthImport = false,
   });
 
   /// Repositorio de mediciones de glucosa. Si es `null`, se usa
@@ -73,6 +77,19 @@ class HomeScreen extends StatefulWidget {
   /// no tocar Firestore real en los widget tests; `main.dart` lo activa
   /// explícitamente una vez que Firebase ya está inicializado.
   final bool enableCloudBackup;
+
+  /// Repositorio de importación manual de glucosa desde sensores/CGM
+  /// (Health Connect/Apple Health). Si es `null`, se usa
+  /// [HealthGlucoseImportRepository] (construido sobre [repository])
+  /// cuando [enableHealthImport] es `true`; en caso contrario, no se
+  /// muestra el botón de importar en `HistoryScreen`.
+  final GlucoseImportRepository? importRepository;
+
+  /// Habilita la construcción automática de
+  /// [HealthGlucoseImportRepository] cuando [importRepository] es
+  /// `null`. Por defecto es `false` para no tocar el plugin `health`
+  /// real en los widget tests; `main.dart` lo activa explícitamente.
+  final bool enableHealthImport;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -119,6 +136,16 @@ class _HomeScreenState extends State<HomeScreen> {
               biometricRepository: _biometricRepository,
             )
           : null);
+  // No usa `??` por la misma razón que `_backupRepository`: el valor
+  // por defecto de `GlucoseImportRepository` es `null` (no una
+  // implementación real), ya que esta funcionalidad depende del plugin
+  // `health` real (`enableHealthImport`), y los tests de widgets no
+  // deben tocar Health Connect/Apple Health reales por defecto.
+  late final GlucoseImportRepository? _importRepository =
+      widget.importRepository ??
+      (widget.enableHealthImport
+          ? HealthGlucoseImportRepository(glucoseRepository: _repository)
+          : null);
 
   GlucoseMeasurement? _lastMeasurement;
   bool _isLoading = true;
@@ -164,7 +191,10 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => HistoryScreen(repository: _repository),
+        builder: (context) => HistoryScreen(
+          repository: _repository,
+          importRepository: _importRepository,
+        ),
       ),
     );
   }

@@ -3,15 +3,32 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
-> Actualizado el 2026-08-19 tras agregar respaldo/restauración manual
-> en la nube (`BackupRepository`/`FirestoreBackupRepository`, sobre
-> Cloud Firestore), **opcional** y disponible solo con sesión
-> iniciada. `AuthScreen` → `_AccountView` ganó los botones "Respaldar
-> en la nube" y "Restaurar desde la nube" (este último con un
-> `AlertDialog` de confirmación, ya que **reemplaza** todos los datos
-> locales en lugar de fusionarlos — no hay clave estable entre
-> dispositivos para fusionar sin duplicados). `HomeScreen` ganó un
-> flag `enableCloudBackup` (`false` por defecto, `true` solo desde
+> Actualizado el 2026-08-20 tras agregar la importación manual de
+> glucosa desde sensores/CGM (`GlucoseImportRepository`/
+> `HealthGlucoseImportRepository`, vía el plugin `health` sobre Google
+> Health Connect/Apple Health), **opcional** y de **solo lectura**
+> (nunca escribe en la plataforma de salud). `HistoryScreen` ganó un
+> ícono "Importar desde sensor" en el `AppBar`, visible solo si se
+> inyecta un `importRepository`; deduplica por fecha/hora + valor, ya
+> que no existe una clave estable entre el historial local (IDs
+> autoincrementales de SQLite) y la plataforma de salud. `HomeScreen`
+> ganó un flag `enableHealthImport` (`false` por defecto, `true` solo
+> desde `main.dart`), mismo patrón que `enableCloudBackup`, para que
+> `HealthGlucoseImportRepository` no se construya automáticamente en
+> los widget tests. Requirió subir `minSdk` de Android a 26
+> (exigencia del plugin `health`). Ningún otro repositorio de datos de
+> salud ni `AppDatabase` cambiaron: SQLite sigue siendo el
+> almacenamiento principal.
+>
+> Cambio previo: se agregó respaldo/restauración manual en la nube
+> (`BackupRepository`/`FirestoreBackupRepository`, sobre Cloud
+> Firestore), **opcional** y disponible solo con sesión iniciada.
+> `AuthScreen` → `_AccountView` ganó los botones "Respaldar en la
+> nube" y "Restaurar desde la nube" (este último con un `AlertDialog`
+> de confirmación, ya que **reemplaza** todos los datos locales en
+> lugar de fusionarlos — no hay clave estable entre dispositivos para
+> fusionar sin duplicados). `HomeScreen` ganó un flag
+> `enableCloudBackup` (`false` por defecto, `true` solo desde
 > `main.dart`) para que `FirestoreBackupRepository` no se construya
 > automáticamente en los widget tests. Ningún repositorio de datos de
 > salud (`GlucoseRepository`, `MealRepository`,
@@ -117,6 +134,13 @@ lib/main.dart
       │    └─ imports: package:sqflite/sqflite.dart
       │    └─ imports: lib/models/biometric_measurement.dart
       │    └─ imports: lib/services/app_database.dart
+      └─ imports: lib/services/glucose_import_repository.dart
+      │    (sin imports externos: solo tipos propios y HealthImportException)
+      └─ imports: lib/services/health_glucose_import_repository.dart
+      │    └─ imports: package:health/health.dart
+      │    └─ imports: lib/models/glucose_measurement.dart
+      │    └─ imports: lib/services/glucose_import_repository.dart
+      │    └─ imports: lib/services/glucose_repository.dart
       └─ imports: lib/screens/glucose_screen.dart
       │    └─ imports: package:flutter/material.dart
       │    └─ imports: lib/models/glucose_measurement.dart
@@ -124,6 +148,7 @@ lib/main.dart
       │    └─ imports: package:flutter/material.dart
       │    └─ imports: package:intl/intl.dart
       │    └─ imports: lib/models/glucose_measurement.dart
+      │    └─ imports: lib/services/glucose_import_repository.dart
       │    └─ imports: lib/services/glucose_repository.dart
       │    └─ imports: lib/widgets/glucose_line_chart.dart
       │         └─ imports: package:fl_chart/fl_chart.dart
@@ -384,7 +409,7 @@ SeguimientoGlucosaApp (StatelessWidget)      [lib/main.dart]
       └─ home: HomeScreen(authRepository: authRepository)
 
 HomeScreen (StatefulWidget)                  [lib/screens/home_screen.dart]
- └─ constructor({repository, mealRepository, medicationRepository, biometricRepository, authRepository, backupRepository, enableCloudBackup = false})
+ └─ constructor({repository, mealRepository, medicationRepository, biometricRepository, authRepository, backupRepository, enableCloudBackup = false, importRepository, enableHealthImport = false})
  └─ createState() → _HomeScreenState
       ├─ _sharedDatabase: AppDatabase    # late final; solo se construye si se necesita
       ├─ _repository: GlucoseRepository = widget.repository ?? SqliteGlucoseRepository.withDatabase(_sharedDatabase)
@@ -397,6 +422,10 @@ HomeScreen (StatefulWidget)                  [lib/screens/home_screen.dart]
       │     # NO usa `??` con una implementación real incondicional (a diferencia
       │     # de los demás repos): requiere `enableCloudBackup=true` explícito,
       │     # para no tocar Firestore real en los widget tests por defecto
+      ├─ _importRepository: GlucoseImportRepository? = widget.importRepository ??
+      │     (enableHealthImport ? HealthGlucoseImportRepository(glucoseRepository: _repository) : null)
+      │     # mismo patrón que _backupRepository: requiere `enableHealthImport=true`
+      │     # explícito, para no tocar el plugin `health` real en los widget tests
       ├─ _lastMeasurement: GlucoseMeasurement?
       ├─ _isLoading: bool
       ├─ initState() → _loadLastMeasurement()
@@ -405,7 +434,7 @@ HomeScreen (StatefulWidget)                  [lib/screens/home_screen.dart]
       │     → al recibir resultado no nulo:
       │           await _repository.addMeasurement(result)
       │           → setState(_lastMeasurement = saved)
-      ├─ _openHistoryScreen() → Navigator.push(HistoryScreen(repository: _repository))
+      ├─ _openHistoryScreen() → Navigator.push(HistoryScreen(repository: _repository, importRepository: _importRepository))
       ├─ _openMealScreen() → Navigator.push(MealScreen(repository: _mealRepository))
       ├─ _openMedicationScreen() → Navigator.push(MedicationScreen(repository: _medicationRepository))
       ├─ _openBiometricScreen() → Navigator.push(BiometricScreen(repository: _biometricRepository))
@@ -442,12 +471,22 @@ SqliteGlucoseRepository (implements GlucoseRepository)  [lib/services/glucose_re
  └─ _fromRow / _toRow         # mapeo fila SQLite ↔ GlucoseMeasurement
 
 HistoryScreen (StatefulWidget)               [lib/screens/history_screen.dart]
- └─ constructor({required repository})
+ └─ constructor({required repository, importRepository})
  └─ createState() → _HistoryScreenState
       ├─ _measurementsFuture = repository.getAllMeasurements()   # una sola carga
+      ├─ _isImporting: bool
+      ├─ _importFromHealth() → async, solo si widget.importRepository != null
+      │     ├─ await importRepository.isAvailable() → si false: mensaje "no disponible"
+      │     ├─ await importRepository.requestPermission() → si false: "permiso denegado"
+      │     ├─ await importRepository.importMeasurements(since: ahora - 30 días)
+      │     │     → si > 0: setState(_measurementsFuture = repository.getAllMeasurements())
+      │     ├─ catch HealthImportException → mensaje legible
+      │     └─ ScaffoldMessenger.showSnackBar(mensaje de resultado)
       └─ build() → DefaultTabController(length: 2)
            └─ Scaffold
                 ├─ AppBar('Historial') + TabBar(['Lista', 'Gráfico'])
+                │     └─ actions: [IconButton(Icons.sync, tooltip: 'Importar desde sensor', onPressed: _importFromHealth)]
+                │           # solo si widget.importRepository != null
                 └─ FutureBuilder<List<GlucoseMeasurement>>
                      ├─ cargando → CircularProgressIndicator
                      ├─ vacío → Text('Todavía no hay mediciones registradas.')
@@ -880,9 +919,11 @@ seguimiento_glucosa/
 │       ├── auth_repository.dart    → AuthRepository, AuthException
 │       ├── firebase_auth_repository.dart → FirebaseAuthRepository
 │       ├── backup_repository.dart  → BackupRepository, BackupException
-│       └── firestore_backup_repository.dart → FirestoreBackupRepository
+│       ├── firestore_backup_repository.dart → FirestoreBackupRepository
+│       ├── glucose_import_repository.dart → GlucoseImportRepository, HealthImportException
+│       └── health_glucose_import_repository.dart → HealthGlucoseImportRepository
 ├── test/
-│   ├── widget_test.dart     → OK (24 tests, HomeScreen + HistoryScreen + MealScreen + MedicationScreen + BiometricScreen + AuthScreen + respaldo/restauración)
+│   ├── widget_test.dart     → OK (30 tests, HomeScreen + HistoryScreen + MealScreen + MedicationScreen + BiometricScreen + AuthScreen + respaldo/restauración + importación CGM)
 │   └── services/
 │       ├── glucose_repository_test.dart    → OK (5 tests, SqliteGlucoseRepository con sqflite_common_ffi)
 │       ├── meal_repository_test.dart       → OK (5 tests, SqliteMealRepository con sqflite_common_ffi)
@@ -894,7 +935,8 @@ seguimiento_glucosa/
 ├── android/app/google-services.json → config nativa Android de Firebase (generado; incluye oauth_client de Google tras habilitar el proveedor)
 ├── ios/Runner/GoogleService-Info.plist → config nativa iOS de Firebase (generado vía firebase apps:sdkconfig; enlazado manualmente en project.pbxproj)
 └── pubspec.yaml              → deps: cupertino_icons, sqflite, path, intl, fl_chart,
-                                 firebase_core, firebase_auth, google_sign_in, cloud_firestore;
+                                 firebase_core, firebase_auth, google_sign_in, cloud_firestore,
+                                 health (Health Connect/HealthKit, minSdk 26);
                                  dev: flutter_lints, flutter_test, sqflite_common_ffi
 ```
 
@@ -924,18 +966,21 @@ seguimiento_glucosa/
 | 18 | Inicio de sesión con Google sin probar en dispositivo/emulador real | — | ⏳ Pendiente (validado por `flutter analyze`/`flutter test`/`flutter build apk --debug`, pero no con una ejecución interactiva del flujo de OAuth) |
 | 19 | Sin respaldo/sincronización de datos entre dispositivos | — | ✅ Resuelto parcialmente (`BackupRepository`/`FirestoreBackupRepository`, botones manuales "Respaldar"/"Restaurar" en `AuthScreen`, solo con sesión iniciada; `restore()` reemplaza, no fusiona; sincronización automática/en tiempo real queda pendiente) |
 | 20 | Respaldo/restauración sin probar en dispositivo/emulador real | — | ⏳ Pendiente (validado por `flutter analyze`/`flutter test`/`flutter build apk --debug`, pero no con una ejecución interactiva contra Firestore real) |
+| 21 | Sin integración con sensores/CGM | — | ✅ Resuelto (`GlucoseImportRepository`/`HealthGlucoseImportRepository`, importación manual de solo lectura desde Google Health Connect/Apple Health vía el plugin `health`; botón "Importar desde sensor" en `HistoryScreen`, solo con `importRepository` inyectado) |
+| 22 | Importación desde sensores/CGM sin probar en dispositivo/emulador real | — | ⏳ Pendiente (validado por `flutter analyze`/`flutter test`/`flutter build apk --debug`, pero no con una ejecución interactiva contra Health Connect real ni con datos de prueba reales) |
 
-Verificación ejecutada tras el último cambio (respaldo/restauración en la nube):
+Verificación ejecutada tras el último cambio (importación manual desde sensores/CGM):
 
 ```text
-flutter pub get → agrega cloud_firestore y sus paquetes de plataforma
-                   (cloud_firestore_platform_interface, cloud_firestore_web)
-dart format --output=none --set-exit-if-changed lib test → Formatted 31 files (0 changed)
+flutter pub get → agrega health y sus dependencias
+                   (carp_serializable, device_info_plus, json_annotation)
+dart format lib test → Formatted 33 files (3 changed)
 flutter analyze  → No issues found!
-flutter test     → All tests passed! (47/47: 42 anteriores + 5 nuevos
-                    de respaldo/restauración, sin ninguna regresión)
+flutter test     → All tests passed! (53/53: 47 anteriores + 6 nuevos
+                    de importación desde sensores/CGM, sin ninguna regresión)
 flutter build apk --debug → √ Built build\app\outputs\flutter-apk\app-debug.apk
-                    (108.1s; compilación real exitosa con cloud_firestore)
+                    (compilación real exitosa con health, tras subir
+                    minSdk de Android a 26)
 ```
 
 ---
