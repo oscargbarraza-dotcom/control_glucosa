@@ -18,6 +18,7 @@ import '../services/meal_glucose_reminder_coordinator.dart';
 import '../services/meal_glucose_reminder_repository.dart';
 import '../services/meal_repository.dart';
 import '../services/medication_repository.dart';
+import '../services/notification_service.dart';
 import '../services/user_profile_repository.dart';
 import 'auth_screen.dart';
 import 'biometric_screen.dart';
@@ -48,6 +49,7 @@ class HomeScreen extends StatefulWidget {
     this.enableHealthImport = false,
     this.reminderRepository,
     this.enableMealReminders = false,
+    this.notificationService,
   });
 
   /// Repositorio de mediciones de glucosa. Si es `null`, se usa
@@ -123,6 +125,14 @@ class HomeScreen extends StatefulWidget {
   /// explícitamente.
   final bool enableMealReminders;
 
+  /// Servicio de notificaciones push locales para los recordatorios de
+  /// glucosa post-comida (roadmap punto 17, Fase B). Si es `null`, los
+  /// recordatorios siguen funcionando solo in-app (diálogo al abrir la
+  /// app), sin ningún aviso del sistema operativo; es el valor usado
+  /// por defecto en los widget tests. `main.dart` inyecta
+  /// [AndroidNotificationService] en dispositivos reales.
+  final NotificationService? notificationService;
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -189,10 +199,12 @@ class _HomeScreenState extends State<HomeScreen> {
         reminderRepository: _reminderRepository,
         glucoseRepository: _repository,
         importRepository: _importRepository,
+        notificationService: widget.notificationService,
       );
 
   GlucoseMeasurement? _lastMeasurement;
   bool _isLoading = true;
+  StreamSubscription<void>? _notificationTapSubscription;
 
   @override
   void initState() {
@@ -200,7 +212,36 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadLastMeasurement();
     if (widget.enableMealReminders) {
       _reviewPendingReminders();
+      _setUpNotificationTapHandling();
     }
+  }
+
+  @override
+  void dispose() {
+    _notificationTapSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Prepara el servicio de notificaciones push (permiso + red de
+  /// seguridad de reprogramación) y se suscribe a los toques sobre
+  /// notificaciones ya mostradas, para volver a revisar los
+  /// recordatorios pendientes en ese caso (roadmap punto 17, Fase B).
+  void _setUpNotificationTapHandling() {
+    final notificationService = widget.notificationService;
+    if (notificationService == null) {
+      return;
+    }
+
+    unawaited(
+      notificationService.requestPermission().then((_) {
+        return _reminderCoordinator.rescheduleAllPending();
+      }),
+    );
+
+    _notificationTapSubscription = notificationService.onNotificationTapped
+        .listen((_) {
+          _reviewPendingReminders();
+        });
   }
 
   /// Revisa los recordatorios de glucosa post-comida vencidos: los que se

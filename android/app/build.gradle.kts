@@ -13,6 +13,10 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Habilita el desugaring de la biblioteca core de Java, exigido por
+        // `flutter_local_notifications` (>=10) para programar notificaciones
+        // con compatibilidad hacia atrás (roadmap punto 17, Fase B).
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -28,6 +32,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Exigido junto con el desugaring de arriba.
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -47,4 +53,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Requerida por `isCoreLibraryDesugaringEnabled` de arriba.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

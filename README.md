@@ -79,9 +79,12 @@ Además, al guardar una comida se generan automáticamente dos
 **recordatorios de medición post-comida** (a los 60 y 90 minutos). Al
 vencer, se intentan resolver solos si hay una medición del
 sensor/CGM cercana en el tiempo; si no, se muestra un diálogo al abrir
-la app (registrar ahora o descartar). Por ahora esta lógica es
-totalmente in-app (Fase A); todavía no dispara notificaciones ni
-alarmas reales del sistema operativo (Fase B, pendiente).
+la app (registrar ahora o descartar) (Fase A, lógica in-app). Además,
+en Android, cada recordatorio programa una **notificación push local**
+(`flutter_local_notifications`) que avisa aunque la app esté cerrada o
+en background; se solicita el permiso de notificaciones al abrir la
+app y, al tocar una notificación, se vuelve a revisar los
+recordatorios pendientes (Fase B).
 
 Se integró **Firebase** (proyecto `seguimiento-glucosa`) como base para
 pasos futuros del roadmap (autenticación, sincronización entre
@@ -105,9 +108,10 @@ de confirmación explícito, ya que la acción no se puede deshacer).
 
 - Sincronización automática/en tiempo real entre dispositivos (la
   versión actual es manual: respaldar/restaurar bajo demanda).
-- Notificaciones/alarmas reales del sistema para los recordatorios de
-  medición post-comida (Fase B); la Fase A (lógica, persistencia y
-  diálogo in-app) ya está implementada.
+- Notificaciones push locales para los recordatorios de medición
+  post-comida en **iOS** (Fase B solo implementada para Android por
+  ahora, vía `flutter_local_notifications`; en iOS sigue funcionando
+  únicamente el diálogo in-app de la Fase A).
 
 **Historial**, **Comida**, **Medicamentos**, **Biometría** (con perfil de
 usuario e IMC) e **importación manual desde sensores/CGM** ya están
@@ -137,6 +141,11 @@ implementados.
 - `health: ^13.3.2` para la importación manual de glucosa desde
   Google Health Connect (Android) y Apple HealthKit (iOS). Solo lee
   datos ya existentes en la plataforma de salud, nunca escribe en ella.
+- `flutter_local_notifications: ^22.3.2` para las notificaciones push
+  locales de los recordatorios de glucosa post-comida (Fase B,
+  solo Android por ahora).
+- `timezone: ^0.11.2` y `flutter_timezone: ^5.1.1` para programar esas
+  notificaciones respetando la zona horaria local del dispositivo.
 - `flutter_lints: ^6.0.0` para análisis estático.
 - `flutter_test` para pruebas de widgets.
 - `sqflite_common_ffi: ^2.4.4` (dev) para probar `SqliteGlucoseRepository`
@@ -219,8 +228,10 @@ test/
 - `lib/services/glucose_import_repository.dart`: interfaz `GlucoseImportRepository` (solo lectura) para importar manualmente mediciones ya registradas en la plataforma de salud del dispositivo (Health Connect/Apple Health) y `HealthImportException`.
 - `lib/services/health_glucose_import_repository.dart`: implementación `HealthGlucoseImportRepository` de `GlucoseImportRepository` sobre el plugin `health`.
 - `lib/services/meal_repository.dart`: interfaz `MealRepository` (listado, agregar, limpiar comidas; listar catálogo de alimentos) y la implementación `SqliteMealRepository`.
-- `lib/services/meal_glucose_reminder_repository.dart`: interfaz `MealGlucoseReminderRepository` (agregar en lote, listar vencidos, actualizar estado) y la implementación `SqliteMealGlucoseReminderRepository`.
-- `lib/services/meal_glucose_reminder_coordinator.dart`: `MealGlucoseReminderCoordinator`, lógica pura de aplicación (sin notificaciones del sistema todavía — Fase A) que genera los dos recordatorios por comida, revisa los vencidos intentando auto-resolución vía CGM, y expone `dismiss`/`resolveManually` para la acción del usuario.
+- `lib/services/meal_glucose_reminder_repository.dart`: interfaz `MealGlucoseReminderRepository` (agregar en lote, listar vencidos con `getPendingDueBy`, listar **todos** los pendientes con `getAllPending`, actualizar estado) y la implementación `SqliteMealGlucoseReminderRepository`.
+- `lib/services/notification_service.dart`: interfaz `NotificationService` (`initialize`, `requestPermission`, `schedule`, `cancel`, `onNotificationTapped`), independiente de plataforma, para las notificaciones push locales de los recordatorios de glucosa post-comida (Fase B).
+- `lib/services/android_notification_service.dart`: implementación `AndroidNotificationService` de `NotificationService` sobre `flutter_local_notifications`/`timezone`/`flutter_timezone`; programa cada notificación con precisión exacta (`AndroidScheduleMode.exactAllowWhileIdle`) y, si el permiso de alarma exacta no está concedido, hace *fallback* automático a precisión inexacta en vez de perder el recordatorio.
+- `lib/services/meal_glucose_reminder_coordinator.dart`: `MealGlucoseReminderCoordinator`, lógica pura de aplicación que genera los dos recordatorios por comida (programando su notificación push si hay un `NotificationService` configurado — Fase B), revisa los vencidos intentando auto-resolución vía CGM, expone `dismiss`/`resolveManually` para la acción del usuario (cancelando la notificación correspondiente) y `rescheduleAllPending` como red de seguridad al iniciar la app.
 - `lib/services/medication_repository.dart`: interfaz `MedicationRepository` (listado, agregar, limpiar tomas; listar catálogo de medicamentos) y la implementación `SqliteMedicationRepository`.
 - `lib/services/biometric_repository.dart`: interfaz `BiometricRepository` (última medición, listado, agregar, limpiar) y la implementación `SqliteBiometricRepository`.
 - `lib/services/user_profile_repository.dart`: interfaz `UserProfileRepository` (perfil único, sin listado ni multiusuario: `getProfile`, `saveProfile`, `clearProfile`) y la implementación `SqliteUserProfileRepository`.
@@ -228,7 +239,7 @@ test/
 - `lib/services/firebase_auth_repository.dart`: implementación `FirebaseAuthRepository` sobre `firebase_auth` y `google_sign_in`.
 - `lib/services/backup_repository.dart`: interfaz `BackupRepository` (`backup`, `restore`, `getLastBackupTime`) y `BackupException`. `restore` reemplaza los datos locales (no los fusiona), ya documentado en su propio docstring.
 - `lib/services/firestore_backup_repository.dart`: implementación `FirestoreBackupRepository` sobre `cloud_firestore`, que serializa las cuatro colecciones de datos de salud a un único documento `backups/{uid}`.
-- `lib/screens/home_screen.dart`: carga la última medición desde el repositorio al iniciar, presenta la tarjeta de glucosa y los accesos a los módulos, guarda cada nueva medición recibida, navega a `HistoryScreen`, `MealScreen`, `MedicationScreen`, `BiometricScreen` y (desde el ícono "Cuenta" del `AppBar`) a `AuthScreen`; al iniciar también revisa recordatorios post-comida vencidos vía `MealGlucoseReminderCoordinator` y muestra un diálogo (registrar ahora / descartar) por cada uno que no se resolvió automáticamente.
+- `lib/screens/home_screen.dart`: carga la última medición desde el repositorio al iniciar, presenta la tarjeta de glucosa y los accesos a los módulos, guarda cada nueva medición recibida, navega a `HistoryScreen`, `MealScreen`, `MedicationScreen`, `BiometricScreen` y (desde el ícono "Cuenta" del `AppBar`) a `AuthScreen`; al iniciar también revisa recordatorios post-comida vencidos vía `MealGlucoseReminderCoordinator` y muestra un diálogo (registrar ahora / descartar) por cada uno que no se resolvió automáticamente. Si se inyecta un `NotificationService` (Fase B), al iniciar también solicita el permiso de notificaciones, reprograma los recordatorios pendientes (`rescheduleAllPending`) y vuelve a revisarlos cada vez que el usuario toca una notificación mostrada por el sistema.
 - `lib/screens/glucose_screen.dart`: contiene el formulario de captura de una medición, con validación, y retorna un `GlucoseMeasurement`.
 - `lib/screens/history_screen.dart`: carga el historial completo de mediciones (`GlucoseRepository.getAllMeasurements`) y lo muestra en dos pestañas: **Lista** (de la más reciente a la más antigua) y **Gráfico** (evolución del valor en el tiempo, vía `GlucoseLineChart`).
 - `lib/screens/meal_screen.dart`: pantalla del módulo de Comidas, con pestañas propias **Registrar** (formulario con alimentos y cantidades) e **Historial** (comidas guardadas).
@@ -278,9 +289,11 @@ flutter test
 Estado actual de la revisión:
 
 - `flutter analyze`: **No issues found!**
-- `flutter test`: **All tests passed!** (91/91).
+- `flutter test`: **All tests passed!** (99/99).
 - `flutter build apk --debug`: compila correctamente (verificado tras
-  integrar `firebase_auth`/`google_sign_in`/`cloud_firestore`).
+  integrar `firebase_auth`/`google_sign_in`/`cloud_firestore` y, más
+  recientemente, `flutter_local_notifications`/`timezone`/
+  `flutter_timezone`).
 
 Incidencias previamente conocidas y ya resueltas:
 
@@ -317,29 +330,44 @@ Nota sobre pruebas:
   `singleInstance: false` para aislar cada test.
 - `test/services/meal_glucose_reminder_coordinator_test.dart` prueba
   `MealGlucoseReminderCoordinator` (lógica pura de aplicación) con un
-  `_FakeMealGlucoseReminderRepository` en memoria, sin tocar SQLite.
+  `_FakeReminderRepository` en memoria, sin tocar SQLite, incluyendo un
+  `_FakeNotificationService` (Fase B) para verificar que se programa y
+  cancela la notificación de cada recordatorio en el momento correcto,
+  y que `rescheduleAllPending` reprograma solo los que siguen
+  pendientes.
+- `test/widget_test.dart` incluye, en el grupo `NotificationService
+  (Fase B)`, un `_FakeNotificationService` para verificar que
+  `HomeScreen` solicita el permiso de notificaciones y reprograma los
+  recordatorios pendientes al abrir, y que tocar una notificación
+  dispara una nueva revisión de recordatorios.
 - `test/models/user_profile_test.dart` prueba `UserProfile.bmiFor` y
   `bmiCategoryFor` como funciones puras, sin dependencias de
   plataforma.
 
 ## Próximos pasos recomendados
 
-1. Implementar la Fase B de los recordatorios de medición post-comida:
-   notificaciones/alarmas reales del sistema (`flutter_local_notifications`
-   + `timezone`/`flutter_timezone`), manteniendo SQLite como fuente de
-   verdad y con reconciliación al iniciar la app.
-2. Evaluar si se necesita sincronización automática/en tiempo real
+1. Extender la Fase B de los recordatorios de medición post-comida
+   (notificaciones push locales) a iOS: por ahora solo está
+   implementada para Android (`AndroidNotificationService`); en iOS
+   sigue funcionando únicamente el diálogo in-app de la Fase A.
+2. Validar en un dispositivo/emulador Android real el flujo completo
+   de notificaciones (concesión/denegación del permiso de alarma
+   exacta, entrega con la app cerrada, reinicio del dispositivo y
+   toque de la notificación), ya que la validación actual cubrió
+   `flutter analyze`, `flutter test` y una compilación exitosa del
+   APK, pero no todas las rutas interactivas del sistema operativo.
+3. Evaluar si se necesita sincronización automática/en tiempo real
    (más allá del respaldo/restauración manual ya implementado), lo
    que requeriría introducir claves estables (p. ej. UUID) en los
    modelos de datos para poder fusionar sin duplicados.
-3. Verificar en una Mac con Xcode que
+4. Verificar en una Mac con Xcode que
    `ios/Runner/GoogleService-Info.plist` (generado vía
    `firebase apps:sdkconfig` y enlazado manualmente al proyecto Xcode,
    ya que `flutterfire configure` no pudo completarlo desde Windows)
    compila y se incluye correctamente al construir para iOS, y que el
    inicio de sesión con Google, el respaldo/restauración y la
    importación desde Apple Health funcionan en esa plataforma.
-4. Probar el inicio de sesión con Google, el respaldo/restauración y
+5. Probar el inicio de sesión con Google, el respaldo/restauración y
    la importación desde Health Connect en un dispositivo/emulador
    Android real (la validación actual cubrió `flutter analyze`,
    `flutter test` y una compilación exitosa del APK, pero no todas las

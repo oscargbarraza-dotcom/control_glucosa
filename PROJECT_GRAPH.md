@@ -3,27 +3,52 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
-> Actualizado el 2026-08-22 tras agregar los recordatorios de medición
+> Actualizado el 2026-08-23 tras agregar la **Fase B** (solo Android)
+> de los recordatorios de medición post-comida: notificaciones push
+> locales reales (`NotificationService` en
+> `lib/services/notification_service.dart`,
+> `AndroidNotificationService` en
+> `lib/services/android_notification_service.dart`, sobre
+> `flutter_local_notifications`/`timezone`/`flutter_timezone`).
+> `MealGlucoseReminderCoordinator` ganó el parámetro opcional
+> `notificationService`: si no es `null`, `addRemindersForMeal`
+> programa la notificación de cada recordatorio nuevo,
+> `dismiss`/`resolveManually`/`reviewPending` (al auto-resolver)
+> cancelan la correspondiente, y el nuevo método
+> `rescheduleAllPending()` reprograma todas las pendientes como red de
+> seguridad al iniciar la app (requirió el nuevo método
+> `getAllPending()` en `MealGlucoseReminderRepository`). `HomeScreen`
+> ganó el parámetro opcional `notificationService`: cuando está
+> presente y `enableMealReminders` es `true`, solicita el permiso de
+> notificaciones, llama a `rescheduleAllPending()`, y se suscribe a
+> `NotificationService.onNotificationTapped` para volver a revisar los
+> pendientes cuando el usuario toca una notificación. `main.dart`
+> inyecta `AndroidNotificationService()` en producción. Requirió
+> habilitar `isCoreLibraryDesugaringEnabled`/`multiDexEnabled` en
+> `android/app/build.gradle.kts` y agregar permisos/`<receiver>` en
+> `android/app/src/main/AndroidManifest.xml`. iOS sigue solo con el
+> diálogo in-app de la Fase A.
+>
+> Cambio previo: se agregaron los recordatorios de medición
 > post-comida, **Fase A** (`MealGlucoseReminder`,
 > `MealGlucoseReminderRepository`/`SqliteMealGlucoseReminderRepository`
 > en `lib/services/meal_glucose_reminder_repository.dart`, y
 > `MealGlucoseReminderCoordinator` en
-> `lib/services/meal_glucose_reminder_coordinator.dart`), que cubre
-> solo la lógica de dominio, la persistencia y la interacción in-app
-> (sin notificaciones/alarmas reales del sistema, que quedan para una
-> **Fase B** futura). `MealScreen` ganó el parámetro opcional
-> `reminderCoordinator`: si no es `null`, cada comida guardada genera
-> dos `MealGlucoseReminder` (60 y 90 minutos desde `Meal.eatenAt`).
-> `HomeScreen` ganó `reminderRepository` y el flag `enableMealReminders`
-> (`false` por defecto, mismo patrón que `enableHealthImport`); cuando
-> está activo, revisa los recordatorios vencidos en `initState` y
-> muestra un `AlertDialog` secuencial por cada uno que no se resolvió
-> solo vía sensor/CGM (tolerancia ±10 minutos respecto a `dueAt`), con
-> sonido (`SystemSound.play`, disparado con `unawaited` para no
-> bloquear la UI) si es de día (07:00–22:00) o silencioso si es de
-> noche. La nueva tabla `meal_glucose_reminders` subió
-> `AppDatabase._schemaVersion` a `7`. Ningún otro repositorio de datos
-> de salud cambió: SQLite sigue siendo el almacenamiento principal.
+> `lib/services/meal_glucose_reminder_coordinator.dart`), que cubrió
+> solo la lógica de dominio, la persistencia y la interacción in-app.
+> `MealScreen` ganó el parámetro opcional `reminderCoordinator`: si no
+> es `null`, cada comida guardada genera dos `MealGlucoseReminder` (60
+> y 90 minutos desde `Meal.eatenAt`). `HomeScreen` ganó
+> `reminderRepository` y el flag `enableMealReminders` (`false` por
+> defecto, mismo patrón que `enableHealthImport`); cuando está activo,
+> revisa los recordatorios vencidos en `initState` y muestra un
+> `AlertDialog` secuencial por cada uno que no se resolvió solo vía
+> sensor/CGM (tolerancia ±10 minutos respecto a `dueAt`), con sonido
+> (`SystemSound.play`, disparado con `unawaited` para no bloquear la
+> UI) si es de día (07:00–22:00) o silencioso si es de noche. La nueva
+> tabla `meal_glucose_reminders` subió `AppDatabase._schemaVersion` a
+> `7`. Ningún otro repositorio de datos de salud cambió: SQLite sigue
+> siendo el almacenamiento principal.
 >
 > Cambio previo: se agregó el perfil de usuario
 > (`UserProfile`/`UserProfileRepository`/`SqliteUserProfileRepository`,
@@ -556,14 +581,17 @@ SeguimientoGlucosaApp (StatelessWidget)      [lib/main.dart]
  └─ build() → MaterialApp
       └─ home: HomeScreen(authRepository: authRepository,
             enableCloudBackup: true, enableHealthImport: true,
-            enableMealReminders: true)
+            enableMealReminders: true,
+            notificationService: notificationService)
+            # SeguimientoGlucosaApp ahora también recibe
+            # notificationService; main() inyecta AndroidNotificationService()
 
 HomeScreen (StatefulWidget)                  [lib/screens/home_screen.dart]
  └─ constructor({repository, mealRepository, medicationRepository,
       biometricRepository, profileRepository, authRepository,
       backupRepository, enableCloudBackup = false, importRepository,
       enableHealthImport = false, reminderRepository,
-      enableMealReminders = false})
+      enableMealReminders = false, notificationService})
  └─ createState() → _HomeScreenState
       ├─ _sharedDatabase: AppDatabase    # late final; solo se construye si se necesita
       ├─ _repository: GlucoseRepository = widget.repository ?? SqliteGlucoseRepository.withDatabase(_sharedDatabase)
@@ -585,15 +613,25 @@ HomeScreen (StatefulWidget)                  [lib/screens/home_screen.dart]
       │     widget.reminderRepository ?? (enableMealReminders
       │       ? SqliteMealGlucoseReminderRepository.withDatabase(_sharedDatabase)
       │       : null)
-      ├─ _reminderCoordinator: MealGlucoseReminderCoordinator? =
-      │     _reminderRepository == null ? null : MealGlucoseReminderCoordinator(
+      ├─ _reminderCoordinator: MealGlucoseReminderCoordinator =
+      │     MealGlucoseReminderCoordinator(
       │       reminderRepository: _reminderRepository, glucoseRepository: _repository,
-      │       importRepository: _importRepository)
+      │       importRepository: _importRepository,
+      │       notificationService: widget.notificationService)   # Fase B
       ├─ _lastMeasurement: GlucoseMeasurement?
       ├─ _isLoading: bool
+      ├─ _notificationTapSubscription: StreamSubscription<void>?    # Fase B
       ├─ initState() → _loadLastMeasurement()
-      │     + si enableMealReminders: _reviewPendingReminders()
+      │     + si enableMealReminders: _reviewPendingReminders() +
+      │       _setUpNotificationTapHandling()
       │     → await _repository.getLastMeasurement() → setState(_lastMeasurement, _isLoading = false)
+      ├─ dispose() → _notificationTapSubscription?.cancel()    # Fase B
+      ├─ _setUpNotificationTapHandling()    # Fase B, no-op si notificationService == null
+      │     → notificationService.requestPermission()
+      │        .then((_) => coordinator.rescheduleAllPending())
+      │     → _notificationTapSubscription =
+      │         notificationService.onNotificationTapped.listen(
+      │           (_) => _reviewPendingReminders())
       ├─ _reviewPendingReminders() → coordinator.reviewPending()
       │     → por cada pendiente: sonido de día + AlertDialog secuencial
       │     → "Registrar ahora": GlucoseScreen → coordinator.resolveManually()
@@ -835,22 +873,49 @@ MealGlucoseReminderStatus (enum)             [lib/models/meal_glucose_reminder.d
 MealGlucoseReminderRepository (interfaz abstracta)  [lib/services/meal_glucose_reminder_repository.dart]
  ├─ addReminders(reminders) → Future<List<MealGlucoseReminder>>
  ├─ getPendingDueBy(now) → Future<List<MealGlucoseReminder>>
+ ├─ getAllPending() → Future<List<MealGlucoseReminder>>   # Fase B: todos los pending, sin filtrar por dueAt
  └─ updateStatus(id, status, resolvedMeasurementId?) → Future<void>
 
 SqliteMealGlucoseReminderRepository          [lib/services/meal_glucose_reminder_repository.dart]
  ├─ constructor({factory, databasePath, singleInstance}) / .withDatabase(AppDatabase)
  ├─ tabla `meal_glucose_reminders` (FK meal_id con ON DELETE CASCADE)
  ├─ addReminders() → transacción SQLite en lote
- └─ getPendingDueBy() → pending vencidos, ordenados por due_at/id
+ ├─ getPendingDueBy() → pending vencidos, ordenados por due_at/id
+ └─ getAllPending() → pending (sin filtro de fecha), ordenados por due_at/id
+
+NotificationService (interfaz abstracta)     [lib/services/notification_service.dart]
+ ├─ initialize() → Future<void>
+ ├─ requestPermission() → Future<bool>
+ ├─ schedule({id, title, body, scheduledAt}) → Future<void>
+ ├─ cancel(id) → Future<void>
+ └─ onNotificationTapped: Stream<void>
+ # Fase B. Todas las implementaciones deben ser best-effort (nunca lanzan).
+
+AndroidNotificationService (implements NotificationService)  [lib/services/android_notification_service.dart]
+ ├─ constructor({plugin})    # FlutterLocalNotificationsPlugin inyectable
+ ├─ canal único `meal_glucose_reminders`
+ ├─ initialize() → tz.setLocalLocation (vía FlutterTimezone) + plugin.initialize
+ │     (conecta onDidReceiveNotificationResponse → _tapController)
+ ├─ requestPermission() → androidPlugin.requestNotificationsPermission()
+ ├─ schedule() → zonedSchedule(exactAllowWhileIdle); si falla,
+ │     reintenta con inexactAllowWhileIdle; omite si scheduledAt ya pasó
+ └─ cancel(id) → plugin.cancel(id: id)
 
 MealGlucoseReminderCoordinator               [lib/services/meal_glucose_reminder_coordinator.dart]
+ ├─ constructor({reminderRepository, glucoseRepository, importRepository?,
+ │     notificationService?, now})
  ├─ offsetsMinutes = [60, 90]; tolerancia CGM = ±10 minutos
  ├─ addRemindersForMeal(meal) → crea/persiste los dos recordatorios
+ │     + _scheduleNotification(reminder) por cada uno (Fase B)
+ ├─ rescheduleAllPending() → getAllPending() + _scheduleNotification()
+ │     por cada uno (Fase B, red de seguridad al iniciar la app)
  ├─ reviewPending() → intenta importar CGM, auto-resuelve coincidencias
- │    y devuelve PendingMealGlucoseReminder para acción manual
+ │    (+ _cancelNotification() al auto-resolver) y devuelve
+ │    PendingMealGlucoseReminder para acción manual
  ├─ isDaytime(at) → true entre 07:00 (incl.) y 22:00 (excl.)
- ├─ dismiss(reminder) → status dismissed
- └─ resolveManually(reminder, measurement) → guarda medición + status resolvedManually
+ ├─ dismiss(reminder) → status dismissed + _cancelNotification()
+ └─ resolveManually(reminder, measurement) → guarda medición + status
+      resolvedManually + _cancelNotification()
 
 MealGlucoseReminderReviewResult / PendingMealGlucoseReminder
  └─ separan auto-resueltos y pendientes manuales, con flag isDaytime

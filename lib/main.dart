@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 import 'screens/home_screen.dart';
+import 'services/android_notification_service.dart';
 import 'services/firebase_auth_repository.dart';
+import 'services/notification_service.dart';
 
 /// Web Client ID del proyecto Firebase `seguimiento-glucosa`, generado
 /// automáticamente al habilitar el proveedor Google en Firebase Auth
@@ -25,19 +27,34 @@ Future<void> main() async {
     serverClientId: _googleSignInServerClientId,
   );
 
-  runApp(SeguimientoGlucosaApp(authRepository: authRepository));
+  runApp(
+    SeguimientoGlucosaApp(
+      authRepository: authRepository,
+      notificationService: AndroidNotificationService(),
+    ),
+  );
 }
 
 /// Punto de entrada de la aplicación Seguimiento Glucosa.
 ///
 /// Configura el [MaterialApp] y carga [HomeScreen] como pantalla inicial.
 class SeguimientoGlucosaApp extends StatelessWidget {
-  const SeguimientoGlucosaApp({super.key, this.authRepository});
+  const SeguimientoGlucosaApp({
+    super.key,
+    this.authRepository,
+    this.notificationService,
+  });
 
   /// Repositorio de autenticación ya inicializado (con Google Sign-In
   /// configurado). Si es `null`, [HomeScreen] crea el suyo por defecto;
   /// se usa `null` en los widget tests que inyectan un fake propio.
   final FirebaseAuthRepository? authRepository;
+
+  /// Servicio de notificaciones push locales para los recordatorios de
+  /// glucosa post-comida (roadmap punto 17, Fase B). Se usa `null` en
+  /// los widget tests, que no deben tocar el plugin nativo
+  /// `flutter_local_notifications`.
+  final NotificationService? notificationService;
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +67,7 @@ class SeguimientoGlucosaApp extends StatelessWidget {
         enableCloudBackup: true,
         enableHealthImport: true,
         enableMealReminders: true,
+        notificationService: notificationService,
       ),
     );
   }

@@ -11,6 +11,7 @@ import '../models/meal_glucose_reminder.dart';
 import 'glucose_import_repository.dart';
 import 'glucose_repository.dart';
 import 'meal_glucose_reminder_repository.dart';
+import 'notification_service.dart';
 
 /// Un [MealGlucoseReminder] vencido que no pudo resolverse solo y necesita
 /// que el usuario tome (o descarte) la medición manualmente.
@@ -60,10 +61,12 @@ class MealGlucoseReminderCoordinator {
     required MealGlucoseReminderRepository reminderRepository,
     required GlucoseRepository glucoseRepository,
     GlucoseImportRepository? importRepository,
+    NotificationService? notificationService,
     DateTime Function() now = DateTime.now,
   }) : _reminderRepository = reminderRepository,
        _glucoseRepository = glucoseRepository,
        _importRepository = importRepository,
+       _notificationService = notificationService,
        _now = now;
 
   /// Hora de inicio de la franja diurna (inclusive). Fuera de
@@ -86,6 +89,7 @@ class MealGlucoseReminderCoordinator {
   final MealGlucoseReminderRepository _reminderRepository;
   final GlucoseRepository _glucoseRepository;
   final GlucoseImportRepository? _importRepository;
+  final NotificationService? _notificationService;
   final DateTime Function() _now;
 
   /// Indica si [moment] cae en la franja diurna (07:00 inclusive –
@@ -95,7 +99,9 @@ class MealGlucoseReminderCoordinator {
     return moment.hour >= _dayStartHour && moment.hour < _dayEndHour;
   }
 
-  /// Genera y persiste los recordatorios (60 y 90 minutos) para [meal].
+  /// Genera y persiste los recordatorios (60 y 90 minutos) para [meal],
+  /// y programa la notificación push correspondiente a cada uno si hay
+  /// un [NotificationService] configurado (roadmap punto 17, Fase B).
   ///
   /// [meal] debe tener [Meal.id] ya asignado (una comida persistida).
   Future<List<MealGlucoseReminder>> addRemindersForMeal(Meal meal) async {
@@ -107,7 +113,29 @@ class MealGlucoseReminderCoordinator {
       );
     }).toList();
 
-    return _reminderRepository.addReminders(reminders);
+    final saved = await _reminderRepository.addReminders(reminders);
+    for (final reminder in saved) {
+      await _scheduleNotification(reminder);
+    }
+    return saved;
+  }
+
+  /// Reprograma la notificación push de cada recordatorio todavía
+  /// pendiente (vencido o no), sin tocar su estado en
+  /// [MealGlucoseReminderRepository].
+  ///
+  /// Red de seguridad para arrancar la app (roadmap punto 17, Fase B):
+  /// cubre, por ejemplo, recordatorios creados antes de que el usuario
+  /// concediera el permiso de notificaciones, o alarmas que el sistema
+  /// operativo haya podido perder (reinstalación de la app, etc.). Es
+  /// seguro llamarla repetidamente: programar con el mismo
+  /// [MealGlucoseReminder.id] reemplaza la notificación anterior en
+  /// vez de duplicarla.
+  Future<void> rescheduleAllPending() async {
+    final pending = await _reminderRepository.getAllPending();
+    for (final reminder in pending) {
+      await _scheduleNotification(reminder);
+    }
   }
 
   /// Revisa los recordatorios pendientes ya vencidos: para cada uno,
@@ -145,6 +173,7 @@ class MealGlucoseReminderCoordinator {
           status: MealGlucoseReminderStatus.resolvedAutomatically,
           resolvedMeasurementId: match.id,
         );
+        await _cancelNotification(reminder);
         resolved.add(
           reminder.copyWith(
             status: MealGlucoseReminderStatus.resolvedAutomatically,
@@ -168,11 +197,12 @@ class MealGlucoseReminderCoordinator {
   }
 
   /// Descarta [reminder] sin asociarle ninguna medición.
-  Future<void> dismiss(MealGlucoseReminder reminder) {
-    return _reminderRepository.updateStatus(
+  Future<void> dismiss(MealGlucoseReminder reminder) async {
+    await _reminderRepository.updateStatus(
       reminder.id!,
       status: MealGlucoseReminderStatus.dismissed,
     );
+    await _cancelNotification(reminder);
   }
 
   /// Registra [measurement] (tomada manualmente por el usuario) como la
@@ -201,8 +231,41 @@ class MealGlucoseReminderCoordinator {
       status: MealGlucoseReminderStatus.resolvedManually,
       resolvedMeasurementId: saved.id,
     );
+    await _cancelNotification(reminder);
 
     return saved;
+  }
+
+  /// Programa la notificación push del sistema para [reminder], si hay
+  /// un [NotificationService] configurado.
+  ///
+  /// Se usa [MealGlucoseReminder.id] como identificador de la
+  /// notificación: es estable y único por recordatorio, por lo que
+  /// reprogramar (ver [rescheduleAllPending]) reemplaza la notificación
+  /// anterior en vez de duplicarla. Nunca lanza una excepción: el fallo
+  /// al programar una notificación push no debe impedir que el
+  /// recordatorio se siga gestionando in-app.
+  Future<void> _scheduleNotification(MealGlucoseReminder reminder) async {
+    final notificationService = _notificationService;
+    if (notificationService == null) {
+      return;
+    }
+    await notificationService.schedule(
+      id: reminder.id!,
+      title: 'Hora de medir tu glucosa',
+      body:
+          'Han pasado ${reminder.offsetMinutes} minutos desde tu comida. '
+          'Registra tu nivel de glucosa para completar el seguimiento.',
+      scheduledAt: reminder.dueAt,
+    );
+  }
+
+  /// Cancela la notificación push del sistema asociada a [reminder], si
+  /// hay un [NotificationService] configurado. Debe llamarse cada vez
+  /// que [reminder] deja de estar pendiente, sea por resolución
+  /// automática, manual o descarte.
+  Future<void> _cancelNotification(MealGlucoseReminder reminder) async {
+    await _notificationService?.cancel(reminder.id!);
   }
 
   Future<void> _tryImportFromSensor() async {

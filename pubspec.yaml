@@ -69,6 +69,16 @@ dependencies:
   # de salud ya existentes en la plataforma, nunca escribe en ella.
   health: ^13.3.2
 
+  # Notificaciones push locales para los recordatorios de glucosa
+  # post-comida (roadmap punto 17, Fase B). `flutter_local_notifications`
+  # programa y muestra las notificaciones nativas aunque la app esté en
+  # background o cerrada; `timezone`/`flutter_timezone` son necesarias
+  # para programar los horarios exactos respetando la zona horaria local
+  # del dispositivo.
+  flutter_local_notifications: ^22.3.2
+  timezone: ^0.11.2
+  flutter_timezone: ^5.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

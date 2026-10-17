@@ -511,15 +511,20 @@ Parcialmente implementado.
 * Recordatorios de medición post-comida (60 y 90 minutos tras guardar
   una comida): **Fase A hecha** — lógica, persistencia y diálogo
   in-app (`MealGlucoseReminder`/`MealGlucoseReminderRepository`/
-  `MealGlucoseReminderCoordinator`), sin notificaciones reales del
-  sistema. Ver roadmap punto 17 y la entrada correspondiente en
+  `MealGlucoseReminderCoordinator`). **Fase B hecha para Android** —
+  notificaciones push locales reales del sistema
+  (`NotificationService`/`AndroidNotificationService`, vía
+  `flutter_local_notifications`), que avisan aunque la app esté
+  cerrada o en background, con permiso solicitado al abrir la app,
+  reconciliación (`rescheduleAllPending`) y revisión al tocar una
+  notificación. Ver roadmap punto 17 y la entrada correspondiente en
   Historial de cambios.
 
 Pendiente:
 
-* Fase B: notificaciones/alarmas reales fuera de la app (la app debe
-  estar cerrada o en background y el usuario debe recibir el aviso
-  igual).
+* Fase B en iOS: por ahora solo Android tiene notificaciones push
+  reales; en iOS sigue funcionando únicamente el diálogo in-app de la
+  Fase A.
 * Alertas por valores altos/bajos de glucosa.
 
 ---
@@ -775,9 +780,10 @@ El modelo conceptual inicial considerado fue:
 * BIOMETRIA — ✅ implementada parcialmente (tabla
   `biometric_measurements`: peso corporal obligatorio, presión arterial
   y frecuencia cardíaca opcionales; IMC queda pendiente).
-* RECORDATORIO_MEDICION — ✅ implementada parcialmente, Fase A (tabla
-  `meal_glucose_reminders`; Fase B de notificaciones reales queda
-  pendiente).
+* RECORDATORIO_MEDICION — ✅ implementada, Fase A (tabla
+  `meal_glucose_reminders`) y Fase B para Android (notificaciones
+  push locales reales vía `flutter_local_notifications`); Fase B en
+  iOS queda pendiente.
 * CONTROL — pendiente.
 
 ---
@@ -999,13 +1005,13 @@ arriba).
 ## Alertas
 
 Parcialmente implementado: recordatorios de medición post-comida
-(Fase A, ver sección "Alertas" bajo "Pantallas creadas" y roadmap
-punto 17).
+(Fase A + Fase B para Android, ver sección "Alertas" bajo "Pantallas
+creadas" y roadmap punto 17).
 
 Ideas futuras:
 
-* Fase B de recordatorios: notificaciones/alarmas reales del sistema
-  (funcionando con la app cerrada o en background).
+* Fase B de recordatorios en iOS (notificaciones push reales; ya
+  implementado para Android).
 * Alertas por valores altos/bajos de glucosa.
 
 ---
@@ -1146,6 +1152,13 @@ Contiene:
   en `initState` (si `enableMealReminders` es `true`) y el
   `AlertDialog` secuencial que muestran (ver la entrada de Historial
   de cambios "Recordatorios de medición post-comida, Fase A").
+* `notificationService`/`_setUpNotificationTapHandling`: si se
+  inyecta un `NotificationService` (Fase B), al iniciar solicita el
+  permiso de notificaciones, reprograma los pendientes
+  (`rescheduleAllPending`) y se suscribe a
+  `NotificationService.onNotificationTapped` para volver a llamar a
+  `_reviewPendingReminders` cuando el usuario toca una notificación.
+  La suscripción se cancela en `dispose`.
 
 ---
 
@@ -1464,11 +1477,53 @@ Capa de persistencia de los recordatorios de medición post-comida.
 Contiene:
 
 * `MealGlucoseReminderRepository`: interfaz abstracta
-  (`addReminders`, `getPendingDueBy`, `updateStatus`).
+  (`addReminders`, `getPendingDueBy`, `getAllPending`,
+  `updateStatus`). `getAllPending` (Fase B) devuelve todos los
+  pendientes sin filtrar por `dueAt`, usado para reprogramar
+  notificaciones push al iniciar la app.
 * `SqliteMealGlucoseReminderRepository`: implementación basada en
   `sqflite`, sobre la tabla `meal_glucose_reminders`. Soporta los
   mismos parámetros de inyección que `SqliteBiometricRepository`
   (`factory`/`databasePath`/`singleInstance`/`.withDatabase`).
+
+---
+
+## lib/services/notification_service.dart
+
+Función:
+
+Interfaz abstracta `NotificationService` (`initialize`,
+`requestPermission`, `schedule`, `cancel`, `onNotificationTapped`),
+independiente de plataforma, para las notificaciones push locales de
+los recordatorios de glucosa post-comida (roadmap punto 17, Fase B).
+Todas las implementaciones deben ser "best-effort": nunca lanzan
+excepciones, ya que el diálogo in-app (Fase A) sigue funcionando como
+respaldo si la notificación falla.
+
+---
+
+## lib/services/android_notification_service.dart
+
+Función:
+
+Implementación `AndroidNotificationService` de `NotificationService`
+sobre `flutter_local_notifications`/`timezone`/`flutter_timezone`.
+
+Contiene:
+
+* Un único canal de notificación (`meal_glucose_reminders`) para
+  todos los recordatorios.
+* `initialize()`: inicializa la base de datos de zonas horarias y fija
+  la zona horaria local del dispositivo (vía `flutter_timezone`), e
+  inicializa el plugin con el callback de tap conectado a un
+  `StreamController` (`onNotificationTapped`).
+* `schedule()`: intenta programar con precisión exacta
+  (`AndroidScheduleMode.exactAllowWhileIdle`) y, si falla (típicamente
+  porque el permiso de alarma exacta no está concedido), hace
+  *fallback* automático a precisión inexacta
+  (`AndroidScheduleMode.inexactAllowWhileIdle`) en vez de perder el
+  recordatorio. Omite programar si `scheduledAt` ya pasó.
+* `cancel()`/`requestPermission()`: best-effort, nunca lanzan.
 
 ---
 
@@ -1483,6 +1538,16 @@ resolución o descarte manual. Ver la entrada correspondiente en
 Historial de cambios para el detalle de cada método
 (`addRemindersForMeal`, `reviewPending`, `dismiss`,
 `resolveManually`, `isDaytime`).
+
+Desde Fase B, acepta opcionalmente un `NotificationService`:
+
+* `addRemindersForMeal` programa la notificación de cada recordatorio
+  nuevo (usando `MealGlucoseReminder.id` como id de notificación).
+* `dismiss`/`resolveManually`/`reviewPending` (al resolver
+  automáticamente) cancelan la notificación correspondiente.
+* `rescheduleAllPending` (nuevo método) reprograma la notificación de
+  cada recordatorio todavía pendiente (vencido o no), como red de
+  seguridad al iniciar la app.
 
 ---
 
@@ -1596,14 +1661,100 @@ Prioridad futura:
 17. ✅ Recordatorios de medición post-comida — Fase A: lógica,
     persistencia y diálogo in-app (`MealGlucoseReminder`,
     `MealGlucoseReminderRepository`/`SqliteMealGlucoseReminderRepository`,
-    `MealGlucoseReminderCoordinator`), sin notificaciones reales del
-    sistema todavía. Ver Historial de cambios. Fase B (notificaciones/
-    alarmas reales fuera de la app) queda pendiente para una iteración
-    futura.
+    `MealGlucoseReminderCoordinator`). Fase B para Android:
+    notificaciones push locales reales del sistema
+    (`NotificationService`/`AndroidNotificationService`, vía
+    `flutter_local_notifications`/`timezone`/`flutter_timezone`), con
+    permiso solicitado al abrir la app, reconciliación al iniciar
+    (`rescheduleAllPending`) y revisión al tocar una notificación. Ver
+    Historial de cambios. Fase B en iOS queda pendiente para una
+    iteración futura.
 
 ---
 
 # Historial de cambios
+
+## 2026-08-23 — Recordatorios de medición post-comida, Fase B para Android (notificaciones push locales)
+
+* Decisiones de alcance (confirmadas con el usuario antes de
+  implementar):
+  * Precisión de las alarmas en Android: enfoque **híbrido**. Se
+    intenta programar con precisión exacta
+    (`AndroidScheduleMode.exactAllowWhileIdle`, requiere el permiso
+    `SCHEDULE_EXACT_ALARM`, que el usuario concede manualmente en
+    Ajustes desde Android 12); si falla (permiso no concedido), se
+    hace *fallback* automático a precisión inexacta
+    (`AndroidScheduleMode.inexactAllowWhileIdle`, sin permisos extra,
+    el sistema puede retrasar la entrega unos minutos). Ninguna rama
+    bloquea el flujo ni requiere intervención del usuario para que el
+    recordatorio exista de alguna forma.
+  * Solo se implementó para **Android** en este turno; iOS sigue
+    funcionando únicamente con el diálogo in-app de la Fase A (queda
+    pendiente para una iteración futura).
+* `pubspec.yaml`: se agregaron `flutter_local_notifications: ^22.3.2`,
+  `timezone: ^0.11.2` y `flutter_timezone: ^5.1.1`.
+* `android/app/build.gradle.kts`: se habilitó
+  `isCoreLibraryDesugaringEnabled`/`multiDexEnabled` (exigidos por
+  `flutter_local_notifications` desde su v10) y se agregó la
+  dependencia `coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")`.
+* `android/app/src/main/AndroidManifest.xml`: se agregaron los
+  permisos `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED` y
+  `SCHEDULE_EXACT_ALARM`, y los `<receiver>` exigidos por el plugin
+  (`ScheduledNotificationReceiver`, `ScheduledNotificationBootReceiver`
+  con sus `intent-filter` de reinicio) para mostrar y reprogramar
+  notificaciones.
+* `lib/services/notification_service.dart` (nuevo): interfaz
+  abstracta `NotificationService` (`initialize`, `requestPermission`,
+  `schedule`, `cancel`, `onNotificationTapped`), independiente de
+  plataforma, para que `MealGlucoseReminderCoordinator` no quede
+  acoplado al plugin nativo. Todas las implementaciones deben ser
+  "best-effort" (nunca lanzan), ya que el diálogo in-app sigue
+  funcionando como respaldo.
+* `lib/services/android_notification_service.dart` (nuevo):
+  `AndroidNotificationService`, implementación sobre
+  `flutter_local_notifications`/`timezone`/`flutter_timezone`. Un
+  único canal (`meal_glucose_reminders`); `initialize()` fija la zona
+  horaria local del dispositivo vía `flutter_timezone` y conecta el
+  callback de tap a un `StreamController` (`onNotificationTapped`);
+  `schedule()` implementa el fallback exacta→inexacta descrito arriba
+  y omite programar si la fecha ya pasó; `cancel()`/
+  `requestPermission()` son best-effort.
+* `lib/services/meal_glucose_reminder_repository.dart`: nuevo método
+  `getAllPending()` (todos los pendientes, sin filtrar por `dueAt`),
+  implementado en `SqliteMealGlucoseReminderRepository` con una
+  consulta `status = 'pending'`.
+* `lib/services/meal_glucose_reminder_coordinator.dart`: nuevo
+  parámetro opcional `notificationService`. `addRemindersForMeal`
+  programa la notificación de cada recordatorio nuevo (usando
+  `MealGlucoseReminder.id` como id de notificación, estable y único);
+  `dismiss`/`resolveManually`/`reviewPending` (al resolver vía CGM)
+  cancelan la notificación correspondiente; nuevo método
+  `rescheduleAllPending()` reprograma la notificación de cada
+  recordatorio todavía pendiente (vencido o no), como red de
+  seguridad al iniciar la app.
+* `lib/screens/home_screen.dart`: nuevo parámetro opcional
+  `notificationService`, pasado al `MealGlucoseReminderCoordinator`.
+  Si no es `null` y `enableMealReminders` es `true`,
+  `_setUpNotificationTapHandling` (llamado desde `initState`)
+  solicita el permiso de notificaciones, llama a
+  `rescheduleAllPending()`, y se suscribe a
+  `NotificationService.onNotificationTapped` para volver a llamar
+  `_reviewPendingReminders` cuando el usuario toca una notificación;
+  la suscripción se cancela en el nuevo `dispose()`.
+* `lib/main.dart`: `SeguimientoGlucosaApp` recibe un nuevo parámetro
+  opcional `notificationService`, pasado a `HomeScreen`; `main()`
+  inyecta `AndroidNotificationService()` en producción.
+* Pruebas nuevas: `_FakeNotificationService` en
+  `test/services/meal_glucose_reminder_coordinator_test.dart` (9 tests
+  nuevos: programar/cancelar notificaciones en cada método del
+  coordinador, y dos tests de `rescheduleAllPending`) y en
+  `test/widget_test.dart` (grupo `NotificationService (Fase B)`, 2
+  tests: solicitud de permiso + reprogramación al abrir `HomeScreen`,
+  y revisión de pendientes al tocar una notificación). Total:
+  91 → 99 tests, todos pasando.
+* Validación: `dart format`, `flutter analyze` (sin issues) y
+  `flutter build apk --debug` (compila correctamente con las nuevas
+  dependencias nativas y la configuración de Gradle/Manifest).
 
 ## 2026-08-22 — Recordatorios de medición post-comida, Fase A (lógica/persistencia/diálogo in-app)
 

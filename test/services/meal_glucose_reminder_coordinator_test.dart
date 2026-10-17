@@ -14,6 +14,7 @@ import 'package:seguimiento_glucosa/services/glucose_import_repository.dart';
 import 'package:seguimiento_glucosa/services/glucose_repository.dart';
 import 'package:seguimiento_glucosa/services/meal_glucose_reminder_coordinator.dart';
 import 'package:seguimiento_glucosa/services/meal_glucose_reminder_repository.dart';
+import 'package:seguimiento_glucosa/services/notification_service.dart';
 
 class _FakeReminderRepository implements MealGlucoseReminderRepository {
   final List<MealGlucoseReminder> reminders = [];
@@ -36,6 +37,13 @@ class _FakeReminderRepository implements MealGlucoseReminderRepository {
               r.status == MealGlucoseReminderStatus.pending &&
               !r.dueAt.isAfter(now),
         )
+        .toList();
+  }
+
+  @override
+  Future<List<MealGlucoseReminder>> getAllPending() async {
+    return reminders
+        .where((r) => r.status == MealGlucoseReminderStatus.pending)
         .toList();
   }
 
@@ -108,6 +116,38 @@ class _FakeImportRepository implements GlucoseImportRepository {
   }
 }
 
+/// Fake de [NotificationService] en memoria: registra qué ids quedan
+/// programados y cancelados, sin tocar ningún plugin nativo.
+class _FakeNotificationService implements NotificationService {
+  final Set<int> scheduledIds = {};
+  final List<DateTime> scheduledAtByCall = [];
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<void> schedule({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledAt,
+  }) async {
+    scheduledIds.add(id);
+    scheduledAtByCall.add(scheduledAt);
+  }
+
+  @override
+  Future<void> cancel(int id) async {
+    scheduledIds.remove(id);
+  }
+
+  @override
+  Stream<void> get onNotificationTapped => const Stream.empty();
+}
+
 void main() {
   group('isDaytime', () {
     test('07:00 es de día (límite inferior inclusive)', () {
@@ -168,6 +208,26 @@ void main() {
       expect(created[1].offsetMinutes, 90);
       expect(created[1].dueAt, DateTime(2026, 1, 1, 14, 30));
       expect(reminderRepository.reminders.length, 2);
+    });
+
+    test('programa una notificación por recordatorio cuando hay '
+        'NotificationService', () async {
+      final reminderRepository = _FakeReminderRepository();
+      final notificationService = _FakeNotificationService();
+      final coordinator = MealGlucoseReminderCoordinator(
+        reminderRepository: reminderRepository,
+        glucoseRepository: _FakeGlucoseRepository(),
+        notificationService: notificationService,
+      );
+
+      final meal = Meal(
+        id: 5,
+        type: MealType.lunch,
+        eatenAt: DateTime(2026, 1, 1, 13),
+      );
+      final created = await coordinator.addRemindersForMeal(meal);
+
+      expect(notificationService.scheduledIds, {created[0].id, created[1].id});
     });
   });
 
@@ -265,6 +325,40 @@ void main() {
         );
       },
     );
+
+    test('cancela la notificación programada al resolverse automáticamente '
+        'vía CGM', () async {
+      final reminderRepository = _FakeReminderRepository();
+      final glucoseRepository = _FakeGlucoseRepository();
+      final notificationService = _FakeNotificationService();
+      final importRepository = _FakeImportRepository(glucoseRepository)
+        ..toDiscover = [
+          GlucoseMeasurement(
+            value: 145,
+            moment: GlucoseMoment.now,
+            measuredAt: DateTime(2026, 1, 1, 9, 3),
+          ),
+        ];
+      final coordinator = MealGlucoseReminderCoordinator(
+        reminderRepository: reminderRepository,
+        glucoseRepository: glucoseRepository,
+        importRepository: importRepository,
+        notificationService: notificationService,
+        now: () => DateTime(2026, 1, 1, 10),
+      );
+      final saved = await reminderRepository.addReminders([
+        MealGlucoseReminder(
+          mealId: 1,
+          offsetMinutes: 60,
+          dueAt: DateTime(2026, 1, 1, 9),
+        ),
+      ]);
+      notificationService.scheduledIds.add(saved.single.id!);
+
+      await coordinator.reviewPending();
+
+      expect(notificationService.scheduledIds, isEmpty);
+    });
 
     test('con CGM disponible pero sin medición dentro de ±10 min, queda '
         'pendiente de acción manual', () async {
@@ -387,6 +481,31 @@ void main() {
       );
       expect(reminderRepository.reminders.single.resolvedMeasurementId, isNull);
     });
+
+    test(
+      'cancela la notificación programada cuando hay NotificationService',
+      () async {
+        final reminderRepository = _FakeReminderRepository();
+        final notificationService = _FakeNotificationService();
+        final coordinator = MealGlucoseReminderCoordinator(
+          reminderRepository: reminderRepository,
+          glucoseRepository: _FakeGlucoseRepository(),
+          notificationService: notificationService,
+        );
+        final saved = await reminderRepository.addReminders([
+          MealGlucoseReminder(
+            mealId: 1,
+            offsetMinutes: 60,
+            dueAt: DateTime(2026, 1, 1, 9),
+          ),
+        ]);
+        notificationService.scheduledIds.add(saved.single.id!);
+
+        await coordinator.dismiss(saved.single);
+
+        expect(notificationService.scheduledIds, isEmpty);
+      },
+    );
   });
 
   group('resolveManually', () {
@@ -452,6 +571,92 @@ void main() {
       );
 
       expect(result.comment, 'Me sentí mareado');
+    });
+
+    test(
+      'cancela la notificación programada cuando hay NotificationService',
+      () async {
+        final reminderRepository = _FakeReminderRepository();
+        final glucoseRepository = _FakeGlucoseRepository();
+        final notificationService = _FakeNotificationService();
+        final coordinator = MealGlucoseReminderCoordinator(
+          reminderRepository: reminderRepository,
+          glucoseRepository: glucoseRepository,
+          notificationService: notificationService,
+        );
+        final saved = await reminderRepository.addReminders([
+          MealGlucoseReminder(
+            mealId: 1,
+            offsetMinutes: 60,
+            dueAt: DateTime(2026, 1, 1, 9),
+          ),
+        ]);
+        notificationService.scheduledIds.add(saved.single.id!);
+
+        await coordinator.resolveManually(
+          saved.single,
+          GlucoseMeasurement(
+            value: 160,
+            moment: GlucoseMoment.afterLunch,
+            measuredAt: DateTime(2026, 1, 1, 9, 1),
+          ),
+        );
+
+        expect(notificationService.scheduledIds, isEmpty);
+      },
+    );
+  });
+
+  group('rescheduleAllPending', () {
+    test('reprograma la notificación de cada recordatorio pendiente, '
+        'vencido o no', () async {
+      final reminderRepository = _FakeReminderRepository();
+      final notificationService = _FakeNotificationService();
+      final coordinator = MealGlucoseReminderCoordinator(
+        reminderRepository: reminderRepository,
+        glucoseRepository: _FakeGlucoseRepository(),
+        notificationService: notificationService,
+      );
+      final saved = await reminderRepository.addReminders([
+        MealGlucoseReminder(
+          mealId: 1,
+          offsetMinutes: 60,
+          // Ya vencido.
+          dueAt: DateTime(2020, 1, 1, 9),
+        ),
+        MealGlucoseReminder(
+          mealId: 1,
+          offsetMinutes: 90,
+          // Todavía por vencer.
+          dueAt: DateTime(2100, 1, 1, 9, 30),
+        ),
+      ]);
+
+      await coordinator.rescheduleAllPending();
+
+      expect(notificationService.scheduledIds, {saved[0].id, saved[1].id});
+    });
+
+    test('no reprograma recordatorios ya resueltos o descartados', () async {
+      final reminderRepository = _FakeReminderRepository();
+      final notificationService = _FakeNotificationService();
+      final coordinator = MealGlucoseReminderCoordinator(
+        reminderRepository: reminderRepository,
+        glucoseRepository: _FakeGlucoseRepository(),
+        notificationService: notificationService,
+      );
+      final saved = await reminderRepository.addReminders([
+        MealGlucoseReminder(
+          mealId: 1,
+          offsetMinutes: 60,
+          dueAt: DateTime(2100, 1, 1, 9),
+        ),
+      ]);
+      await coordinator.dismiss(saved.single);
+
+      await coordinator.rescheduleAllPending();
+
+      expect(notificationService.scheduledIds, isEmpty);
     });
   });
 }

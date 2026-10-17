@@ -26,6 +26,18 @@ abstract class MealGlucoseReminderRepository {
   /// reciente.
   Future<List<MealGlucoseReminder>> getPendingDueBy(DateTime now);
 
+  /// Recupera **todos** los recordatorios en estado
+  /// [MealGlucoseReminderStatus.pending], sin filtrar por [dueAt] (a
+  /// diferencia de [getPendingDueBy], incluye tanto los ya vencidos como
+  /// los que todavía están por vencer).
+  ///
+  /// Lo usa [MealGlucoseReminderCoordinator] para reprogramar las
+  /// notificaciones push del sistema cada vez que arranca la app
+  /// (roadmap punto 17, Fase B), como red de seguridad ante alarmas que
+  /// el sistema operativo haya podido perder (por ejemplo, tras
+  /// reinstalar la app).
+  Future<List<MealGlucoseReminder>> getAllPending();
+
   /// Actualiza el estado del recordatorio [id] a [status], asociando
   /// opcionalmente [resolvedMeasurementId] (el `id` de la
   /// `GlucoseMeasurement` que lo resolvió).
@@ -106,6 +118,18 @@ class SqliteMealGlucoseReminderRepository
         MealGlucoseReminderStatus.pending.name,
         now.toIso8601String(),
       ],
+      orderBy: 'due_at ASC, id ASC',
+    );
+    return rows.map(_fromRow).toList();
+  }
+
+  @override
+  Future<List<MealGlucoseReminder>> getAllPending() async {
+    final db = await _db;
+    final rows = await db.query(
+      _table,
+      where: 'status = ?',
+      whereArgs: [MealGlucoseReminderStatus.pending.name],
       orderBy: 'due_at ASC, id ASC',
     );
     return rows.map(_fromRow).toList();

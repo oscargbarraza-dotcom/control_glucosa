@@ -5,6 +5,22 @@
          Connect. -->
     <uses-permission android:name="android.permission.health.READ_BLOOD_GLUCOSE"/>
 
+    <!-- Notificaciones locales de los recordatorios de glucosa post-comida
+         (roadmap punto 17, Fase B), vía `flutter_local_notifications`. -->
+    <!-- Android 13+ (API 33) exige este permiso en tiempo de ejecución para
+         poder mostrar cualquier notificación. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Permite reprogramar los recordatorios pendientes si el dispositivo
+         se reinicia antes de que venzan (ver ScheduledNotificationBootReceiver
+         más abajo). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Permiso para alarmas exactas (Android 12+/13+). El usuario debe
+         concederlo explícitamente en Ajustes; si no lo concede, la app usa
+         `AndroidScheduleMode.inexactAllowWhileIdle` como alternativa (ver
+         `AndroidNotificationService`), por lo que este permiso es
+         opcional en la práctica y nunca bloquea el flujo. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+
     <application
         android:label="seguimiento_glucosa"
         android:name="${applicationName}"
@@ -53,6 +69,25 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Receivers exigidos por `flutter_local_notifications` para
+             mostrar las notificaciones programadas de los recordatorios de
+             glucosa post-comida (roadmap punto 17, Fase B) y para volver a
+             programarlas si el dispositivo se reinicia antes de que
+             venzan. -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

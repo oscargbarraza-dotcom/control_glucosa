@@ -37,6 +37,7 @@ import 'package:seguimiento_glucosa/services/glucose_repository.dart';
 import 'package:seguimiento_glucosa/services/meal_glucose_reminder_repository.dart';
 import 'package:seguimiento_glucosa/services/meal_repository.dart';
 import 'package:seguimiento_glucosa/services/medication_repository.dart';
+import 'package:seguimiento_glucosa/services/notification_service.dart';
 import 'package:seguimiento_glucosa/services/user_profile_repository.dart';
 
 /// Repositorio en memoria usado solo en pruebas, para evitar llamadas al
@@ -144,6 +145,13 @@ class _FakeMealGlucoseReminderRepository
               r.status == MealGlucoseReminderStatus.pending &&
               !r.dueAt.isAfter(now),
         )
+        .toList();
+  }
+
+  @override
+  Future<List<MealGlucoseReminder>> getAllPending() async {
+    return _reminders
+        .where((r) => r.status == MealGlucoseReminderStatus.pending)
         .toList();
   }
 
@@ -418,6 +426,45 @@ class _FakeGlucoseImportRepository implements GlucoseImportRepository {
     }
     return toImport.length;
   }
+}
+
+/// Servicio de notificaciones en memoria usado solo en pruebas, para
+/// evitar llamadas al plugin real `flutter_local_notifications`.
+class _FakeNotificationService implements NotificationService {
+  final Set<int> scheduledIds = {};
+  bool permissionGranted = true;
+  int requestPermissionCallCount = 0;
+  final _tapController = StreamController<void>.broadcast();
+
+  /// Simula que el usuario tocó una notificación ya mostrada.
+  void simulateTap() => _tapController.add(null);
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> requestPermission() async {
+    requestPermissionCallCount++;
+    return permissionGranted;
+  }
+
+  @override
+  Future<void> schedule({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledAt,
+  }) async {
+    scheduledIds.add(id);
+  }
+
+  @override
+  Future<void> cancel(int id) async {
+    scheduledIds.remove(id);
+  }
+
+  @override
+  Stream<void> get onNotificationTapped => _tapController.stream;
 }
 
 void main() {
@@ -1591,5 +1638,87 @@ void main() {
       reminderRepository._reminders.single.status,
       MealGlucoseReminderStatus.resolvedAutomatically,
     );
+  });
+
+  group('NotificationService (Fase B)', () {
+    testWidgets(
+      'Al abrir HomeScreen con un NotificationService, solicita permiso y '
+      'reprograma los recordatorios pendientes',
+      (WidgetTester tester) async {
+        final reminderRepository = _FakeMealGlucoseReminderRepository();
+        final saved = await reminderRepository.addReminders([
+          MealGlucoseReminder(
+            mealId: 1,
+            offsetMinutes: 60,
+            dueAt: DateTime.now().add(const Duration(minutes: 30)),
+          ),
+        ]);
+        final notificationService = _FakeNotificationService();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              repository: _FakeGlucoseRepository(),
+              reminderRepository: reminderRepository,
+              enableMealReminders: true,
+              notificationService: notificationService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(notificationService.requestPermissionCallCount, 1);
+        expect(notificationService.scheduledIds, {saved.single.id});
+      },
+    );
+
+    testWidgets('Tocar una notificación vuelve a revisar los recordatorios '
+        'pendientes y muestra el diálogo correspondiente', (
+      WidgetTester tester,
+    ) async {
+      final reminderRepository = _FakeMealGlucoseReminderRepository();
+      await reminderRepository.addReminders([
+        MealGlucoseReminder(
+          mealId: 1,
+          offsetMinutes: 60,
+          dueAt: DateTime.now().subtract(const Duration(minutes: 5)),
+        ),
+      ]);
+      final notificationService = _FakeNotificationService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            reminderRepository: reminderRepository,
+            enableMealReminders: true,
+            notificationService: notificationService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // El primer `reviewPending` (en `initState`) ya mostró el diálogo;
+      // se descarta para simular que el usuario lo ignoró y, en cambio,
+      // tocó la notificación del sistema más tarde.
+      await tester.tap(find.text('Descartar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hora de medir tu glucosa'), findsNothing);
+
+      // Se agrega un segundo recordatorio pendiente para verificar que
+      // el toque efectivamente dispara una nueva revisión.
+      await reminderRepository.addReminders([
+        MealGlucoseReminder(
+          mealId: 1,
+          offsetMinutes: 90,
+          dueAt: DateTime.now().subtract(const Duration(minutes: 1)),
+        ),
+      ]);
+
+      notificationService.simulateTap();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hora de medir tu glucosa'), findsOneWidget);
+    });
   });
 }
