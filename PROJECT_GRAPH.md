@@ -3,7 +3,29 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
-> Actualizado el 2026-08-21 tras agregar el perfil de usuario
+> Actualizado el 2026-08-22 tras agregar los recordatorios de medición
+> post-comida, **Fase A** (`MealGlucoseReminder`,
+> `MealGlucoseReminderRepository`/`SqliteMealGlucoseReminderRepository`
+> en `lib/services/meal_glucose_reminder_repository.dart`, y
+> `MealGlucoseReminderCoordinator` en
+> `lib/services/meal_glucose_reminder_coordinator.dart`), que cubre
+> solo la lógica de dominio, la persistencia y la interacción in-app
+> (sin notificaciones/alarmas reales del sistema, que quedan para una
+> **Fase B** futura). `MealScreen` ganó el parámetro opcional
+> `reminderCoordinator`: si no es `null`, cada comida guardada genera
+> dos `MealGlucoseReminder` (60 y 90 minutos desde `Meal.eatenAt`).
+> `HomeScreen` ganó `reminderRepository` y el flag `enableMealReminders`
+> (`false` por defecto, mismo patrón que `enableHealthImport`); cuando
+> está activo, revisa los recordatorios vencidos en `initState` y
+> muestra un `AlertDialog` secuencial por cada uno que no se resolvió
+> solo vía sensor/CGM (tolerancia ±10 minutos respecto a `dueAt`), con
+> sonido (`SystemSound.play`, disparado con `unawaited` para no
+> bloquear la UI) si es de día (07:00–22:00) o silencioso si es de
+> noche. La nueva tabla `meal_glucose_reminders` subió
+> `AppDatabase._schemaVersion` a `7`. Ningún otro repositorio de datos
+> de salud cambió: SQLite sigue siendo el almacenamiento principal.
+>
+> Cambio previo: se agregó el perfil de usuario
 > (`UserProfile`/`UserProfileRepository`/`SqliteUserProfileRepository`,
 > en `lib/models/user_profile.dart` y
 > `lib/services/user_profile_repository.dart`) y el cálculo de IMC
@@ -109,8 +131,11 @@ lib/main.dart
  │    └─ imports: lib/services/auth_repository.dart
  │         └─ imports: lib/models/app_user.dart
  └─ imports: lib/screens/home_screen.dart
+      └─ imports: dart:async
       └─ imports: package:flutter/material.dart
+      └─ imports: package:flutter/services.dart
       └─ imports: lib/models/glucose_measurement.dart
+      └─ imports: lib/models/meal_glucose_reminder.dart
       └─ imports: lib/services/app_database.dart
       └─ imports: lib/services/auth_repository.dart
       └─ imports: lib/services/firebase_auth_repository.dart
@@ -162,6 +187,17 @@ lib/main.dart
       │    └─ imports: package:sqflite/sqflite.dart
       │    └─ imports: lib/models/user_profile.dart
       │    └─ imports: lib/services/app_database.dart
+      └─ imports: lib/services/meal_glucose_reminder_repository.dart
+      │    └─ imports: package:sqflite/sqflite.dart
+      │    └─ imports: lib/models/meal_glucose_reminder.dart
+      │    └─ imports: lib/services/app_database.dart
+      └─ imports: lib/services/meal_glucose_reminder_coordinator.dart
+      │    └─ imports: lib/models/glucose_measurement.dart
+      │    └─ imports: lib/models/meal.dart
+      │    └─ imports: lib/models/meal_glucose_reminder.dart
+      │    └─ imports: lib/services/glucose_import_repository.dart
+      │    └─ imports: lib/services/glucose_repository.dart
+      │    └─ imports: lib/services/meal_glucose_reminder_repository.dart
       └─ imports: lib/screens/glucose_screen.dart
       │    └─ imports: package:flutter/material.dart
       │    └─ imports: lib/models/glucose_measurement.dart
@@ -181,6 +217,7 @@ lib/main.dart
       │    └─ imports: package:intl/intl.dart
       │    └─ imports: lib/models/food.dart
       │    └─ imports: lib/models/meal.dart
+      │    └─ imports: lib/services/meal_glucose_reminder_coordinator.dart
       │    └─ imports: lib/services/meal_repository.dart
       └─ imports: lib/screens/medication_screen.dart
       │    └─ imports: package:flutter/material.dart
@@ -211,6 +248,7 @@ test/widget_test.dart
  └─ imports: package:seguimiento_glucosa/models/food.dart
  └─ imports: package:seguimiento_glucosa/models/glucose_measurement.dart
  └─ imports: package:seguimiento_glucosa/models/meal.dart
+ └─ imports: package:seguimiento_glucosa/models/meal_glucose_reminder.dart
  └─ imports: package:seguimiento_glucosa/models/medication.dart
  └─ imports: package:seguimiento_glucosa/models/medication_intake.dart
  └─ imports: package:seguimiento_glucosa/models/user_profile.dart
@@ -220,6 +258,7 @@ test/widget_test.dart
  └─ imports: package:seguimiento_glucosa/services/biometric_repository.dart
  └─ imports: package:seguimiento_glucosa/services/glucose_import_repository.dart
  └─ imports: package:seguimiento_glucosa/services/glucose_repository.dart
+ └─ imports: package:seguimiento_glucosa/services/meal_glucose_reminder_repository.dart
  └─ imports: package:seguimiento_glucosa/services/meal_repository.dart
  └─ imports: package:seguimiento_glucosa/services/medication_repository.dart
  └─ imports: package:seguimiento_glucosa/services/user_profile_repository.dart
@@ -259,6 +298,26 @@ test/services/user_profile_repository_test.dart
  └─ imports: package:sqflite_common_ffi/sqflite_ffi.dart
  └─ imports: package:seguimiento_glucosa/models/user_profile.dart
  └─ imports: package:seguimiento_glucosa/services/user_profile_repository.dart
+
+test/services/meal_glucose_reminder_repository_test.dart
+ └─ imports: package:flutter_test/flutter_test.dart
+ └─ imports: package:sqflite_common_ffi/sqflite_ffi.dart
+ └─ imports: package:seguimiento_glucosa/models/food.dart
+ └─ imports: package:seguimiento_glucosa/models/meal.dart
+ └─ imports: package:seguimiento_glucosa/models/meal_glucose_reminder.dart
+ └─ imports: package:seguimiento_glucosa/services/app_database.dart
+ └─ imports: package:seguimiento_glucosa/services/meal_glucose_reminder_repository.dart
+ └─ imports: package:seguimiento_glucosa/services/meal_repository.dart
+
+test/services/meal_glucose_reminder_coordinator_test.dart
+ └─ imports: package:flutter_test/flutter_test.dart
+ └─ imports: package:seguimiento_glucosa/models/glucose_measurement.dart
+ └─ imports: package:seguimiento_glucosa/models/meal.dart
+ └─ imports: package:seguimiento_glucosa/models/meal_glucose_reminder.dart
+ └─ imports: package:seguimiento_glucosa/services/glucose_import_repository.dart
+ └─ imports: package:seguimiento_glucosa/services/glucose_repository.dart
+ └─ imports: package:seguimiento_glucosa/services/meal_glucose_reminder_coordinator.dart
+ └─ imports: package:seguimiento_glucosa/services/meal_glucose_reminder_repository.dart
 ```
 
 ### Representación Mermaid
@@ -266,16 +325,20 @@ test/services/user_profile_repository_test.dart
 ```mermaid
 graph TD
     main["lib/main.dart"] --> firebaseOpts["lib/firebase_options.dart"]
-    main["lib/main.dart"] --> authRepoImpl["lib/services/firebase_auth_repository.dart"]
-    main["lib/main.dart"] --> home["lib/screens/home_screen.dart"]
+    main --> authRepoImpl["lib/services/firebase_auth_repository.dart"]
+    main --> home["lib/screens/home_screen.dart"]
     home --> glucose["lib/screens/glucose_screen.dart"]
     home --> model["lib/models/glucose_measurement.dart"]
+    home --> reminderModel["lib/models/meal_glucose_reminder.dart"]
     home --> db["lib/services/app_database.dart"]
     home --> repo["lib/services/glucose_repository.dart"]
     home --> mealRepo["lib/services/meal_repository.dart"]
     home --> medRepo["lib/services/medication_repository.dart"]
     home --> bioRepo["lib/services/biometric_repository.dart"]
     home --> profileRepo["lib/services/user_profile_repository.dart"]
+    home --> reminderRepo["lib/services/meal_glucose_reminder_repository.dart"]
+    home --> reminderCoord["lib/services/meal_glucose_reminder_coordinator.dart"]
+    home --> importRepo["lib/services/glucose_import_repository.dart"]
     home --> authRepo["lib/services/auth_repository.dart"]
     home --> authRepoImpl
     home --> backupRepo["lib/services/backup_repository.dart"]
@@ -300,6 +363,15 @@ graph TD
     bioRepo --> bioModel["lib/models/biometric_measurement.dart"]
     profileRepo --> db
     profileRepo --> profileModel["lib/models/user_profile.dart"]
+    reminderRepo --> db
+    reminderRepo --> reminderModel
+    reminderCoord --> model
+    reminderCoord --> meal
+    reminderCoord --> reminderModel
+    reminderCoord --> reminderRepo
+    reminderCoord --> repo
+    reminderCoord --> importRepo
+    mealScreen --> reminderCoord
     history --> model
     history --> repo
     history --> chart["lib/widgets/glucose_line_chart.dart"]
@@ -345,6 +417,8 @@ graph TD
     widget_test --> medRepo
     widget_test --> bioRepo
     widget_test --> profileRepo
+    widget_test --> reminderModel
+    widget_test --> reminderRepo
     widget_test --> authRepo
     widget_test --> backupRepo
     repo_test["test/services/glucose_repository_test.dart"] --> model
@@ -360,6 +434,19 @@ graph TD
     profile_test["test/models/user_profile_test.dart"] --> profileModel
     profile_repo_test["test/services/user_profile_repository_test.dart"] --> profileModel
     profile_repo_test --> profileRepo
+    reminder_repo_test["test/services/meal_glucose_reminder_repository_test.dart"] --> food
+    reminder_repo_test --> meal
+    reminder_repo_test --> reminderModel
+    reminder_repo_test --> db
+    reminder_repo_test --> reminderRepo
+    reminder_repo_test --> mealRepo
+    reminder_coord_test["test/services/meal_glucose_reminder_coordinator_test.dart"] --> model
+    reminder_coord_test --> meal
+    reminder_coord_test --> reminderModel
+    reminder_coord_test --> importRepo
+    reminder_coord_test --> repo
+    reminder_coord_test --> reminderCoord
+    reminder_coord_test --> reminderRepo
 
     pkg_material["package:flutter/material.dart"]
     pkg_test["package:flutter_test/flutter_test.dart"]
@@ -390,6 +477,7 @@ graph TD
     medRepo --> pkg_sqflite
     bioRepo --> pkg_sqflite
     profileRepo --> pkg_sqflite
+    reminderRepo --> pkg_sqflite
     widget_test --> pkg_material
     widget_test --> pkg_test
     widget_test --> pkg_fl_chart
@@ -404,10 +492,14 @@ graph TD
     profile_test --> pkg_test
     profile_repo_test --> pkg_test
     profile_repo_test --> pkg_sqflite_ffi
+    reminder_repo_test --> pkg_test
+    reminder_repo_test --> pkg_sqflite_ffi
+    reminder_coord_test --> pkg_test
 ```
 
 `lib/models/glucose_measurement.dart`, `lib/models/food.dart`,
-`lib/models/meal.dart`, `lib/models/medication.dart`,
+`lib/models/meal.dart`, `lib/models/meal_glucose_reminder.dart`,
+`lib/models/medication.dart`,
 `lib/models/medication_intake.dart`,
 `lib/models/biometric_measurement.dart`, `lib/models/user_profile.dart`
 y `lib/models/app_user.dart` no dependen de Flutter: son módulos de
@@ -417,13 +509,14 @@ Dart puro, lo que facilita probarlos de forma aislada sin
 `lib/services/app_database.dart`,
 `lib/services/glucose_repository.dart`,
 `lib/services/meal_repository.dart`,
+`lib/services/meal_glucose_reminder_repository.dart`,
+`lib/services/meal_glucose_reminder_coordinator.dart`,
 `lib/services/medication_repository.dart`,
 `lib/services/biometric_repository.dart` y
-`lib/services/user_profile_repository.dart` tampoco dependen de Flutter
-(solo de `sqflite`/`path`), por lo que `SqliteGlucoseRepository`,
-`SqliteMealRepository`, `SqliteMedicationRepository`,
-`SqliteBiometricRepository` y `SqliteUserProfileRepository` se pueden
-probar directamente con `sqflite_common_ffi` sin `flutter_test`.
+`lib/services/user_profile_repository.dart` tampoco dependen de Flutter.
+Las implementaciones SQLite se pueden probar directamente con
+`sqflite_common_ffi`; el coordinador se prueba con fakes en memoria, sin
+plugins ni base de datos real.
 `lib/services/auth_repository.dart`
 (la interfaz) tampoco depende de Flutter ni de Firebase, solo de
 `lib/models/app_user.dart`, lo que permite el `_FakeAuthRepository` de
@@ -461,16 +554,23 @@ main() (Future<void>, async)                 [lib/main.dart]
 SeguimientoGlucosaApp (StatelessWidget)      [lib/main.dart]
  └─ constructor({authRepository})    # FirebaseAuthRepository? ya inicializado
  └─ build() → MaterialApp
-      └─ home: HomeScreen(authRepository: authRepository)
+      └─ home: HomeScreen(authRepository: authRepository,
+            enableCloudBackup: true, enableHealthImport: true,
+            enableMealReminders: true)
 
 HomeScreen (StatefulWidget)                  [lib/screens/home_screen.dart]
- └─ constructor({repository, mealRepository, medicationRepository, biometricRepository, authRepository, backupRepository, enableCloudBackup = false, importRepository, enableHealthImport = false})
+ └─ constructor({repository, mealRepository, medicationRepository,
+      biometricRepository, profileRepository, authRepository,
+      backupRepository, enableCloudBackup = false, importRepository,
+      enableHealthImport = false, reminderRepository,
+      enableMealReminders = false})
  └─ createState() → _HomeScreenState
       ├─ _sharedDatabase: AppDatabase    # late final; solo se construye si se necesita
       ├─ _repository: GlucoseRepository = widget.repository ?? SqliteGlucoseRepository.withDatabase(_sharedDatabase)
       ├─ _mealRepository: MealRepository = widget.mealRepository ?? SqliteMealRepository.withDatabase(_sharedDatabase)
       ├─ _medicationRepository: MedicationRepository = widget.medicationRepository ?? SqliteMedicationRepository.withDatabase(_sharedDatabase)
       ├─ _biometricRepository: BiometricRepository = widget.biometricRepository ?? SqliteBiometricRepository.withDatabase(_sharedDatabase)
+      ├─ _profileRepository: UserProfileRepository = widget.profileRepository ?? SqliteUserProfileRepository.withDatabase(_sharedDatabase)
       ├─ _authRepository: AuthRepository = widget.authRepository ?? FirebaseAuthRepository()
       ├─ _backupRepository: BackupRepository? = widget.backupRepository ??
       │     (enableCloudBackup ? FirestoreBackupRepository(...) : null)
@@ -481,16 +581,30 @@ HomeScreen (StatefulWidget)                  [lib/screens/home_screen.dart]
       │     (enableHealthImport ? HealthGlucoseImportRepository(glucoseRepository: _repository) : null)
       │     # mismo patrón que _backupRepository: requiere `enableHealthImport=true`
       │     # explícito, para no tocar el plugin `health` real en los widget tests
+      ├─ _reminderRepository: MealGlucoseReminderRepository? =
+      │     widget.reminderRepository ?? (enableMealReminders
+      │       ? SqliteMealGlucoseReminderRepository.withDatabase(_sharedDatabase)
+      │       : null)
+      ├─ _reminderCoordinator: MealGlucoseReminderCoordinator? =
+      │     _reminderRepository == null ? null : MealGlucoseReminderCoordinator(
+      │       reminderRepository: _reminderRepository, glucoseRepository: _repository,
+      │       importRepository: _importRepository)
       ├─ _lastMeasurement: GlucoseMeasurement?
       ├─ _isLoading: bool
       ├─ initState() → _loadLastMeasurement()
+      │     + si enableMealReminders: _reviewPendingReminders()
       │     → await _repository.getLastMeasurement() → setState(_lastMeasurement, _isLoading = false)
+      ├─ _reviewPendingReminders() → coordinator.reviewPending()
+      │     → por cada pendiente: sonido de día + AlertDialog secuencial
+      │     → "Registrar ahora": GlucoseScreen → coordinator.resolveManually()
+      │     → "Descartar"/cerrar: coordinator.dismiss()
       ├─ _openGlucoseScreen() → await Navigator.push<GlucoseMeasurement>
       │     → al recibir resultado no nulo:
       │           await _repository.addMeasurement(result)
       │           → setState(_lastMeasurement = saved)
       ├─ _openHistoryScreen() → Navigator.push(HistoryScreen(repository: _repository, importRepository: _importRepository))
-      ├─ _openMealScreen() → Navigator.push(MealScreen(repository: _mealRepository))
+      ├─ _openMealScreen() → Navigator.push(MealScreen(repository: _mealRepository,
+      │     reminderCoordinator: _reminderCoordinator))
       ├─ _openMedicationScreen() → Navigator.push(MedicationScreen(repository: _medicationRepository))
       ├─ _openBiometricScreen() → Navigator.push(BiometricScreen(repository: _biometricRepository, profileRepository: _profileRepository))
       ├─ _openAuthScreen() → Navigator.push(AuthScreen(repository: _authRepository, backupRepository: _backupRepository))
@@ -638,10 +752,12 @@ _AuthForm (StatefulWidget, privado)          [lib/screens/auth_screen.dart]
 AppDatabase (clase)                          [lib/services/app_database.dart]
  ├─ constructor({factory, databasePath, singleInstance})  # inyectables para tests
  ├─ database: Future<Database>    # getter perezoso; abre/reutiliza la conexión
- ├─ _schemaVersion = 5
+ ├─ _schemaVersion = 7
  ├─ onConfigure → 'PRAGMA foreign_keys = ON'   # necesario para ON DELETE CASCADE
- ├─ _createAll(db)   # crea las 8 tablas (instalación nueva)
- └─ _upgrade(db, oldVersion)   # oldVersion<2 → tablas de comidas; oldVersion<3 → tablas de medicamentos; oldVersion<4 → tabla de biometría; oldVersion<5 → ALTER TABLE biometric_measurements ADD systolic_pressure/diastolic_pressure/heart_rate_bpm
+ ├─ _createAll(db)   # crea las 10 tablas (instalación nueva)
+ └─ _upgrade(db, oldVersion)
+      # <2 comidas; <3 medicamentos; <4 biometría; <5 presión/FC;
+      # <6 user_profile; <7 meal_glucose_reminders
 
 MealRepository (interfaz abstracta)          [lib/services/meal_repository.dart]
  ├─ getAllMeals() → Future<List<Meal>>   # más reciente → más antigua, con items
@@ -657,11 +773,12 @@ SqliteMealRepository (implements MealRepository)  [lib/services/meal_repository.
  └─ _getItemsForMeal(db, mealId)   # JOIN meal_food_items + foods
 
 MealScreen (StatefulWidget)                  [lib/screens/meal_screen.dart]
- └─ constructor({required repository})
+ └─ constructor({required repository, reminderCoordinator})
  └─ createState() → _MealScreenState (with SingleTickerProviderStateMixin)
       ├─ _tabController: TabController(length: 2)
       ├─ _mealsFuture = repository.getAllMeals()
-      ├─ _handleMealSaved(meal) → await repository.addMeal(meal)
+      ├─ _handleMealSaved(meal) → saved = await repository.addMeal(meal)
+      │     → await reminderCoordinator?.addRemindersForMeal(saved)
       │     → setState(_mealsFuture = ...) → _tabController.animateTo(1) → SnackBar
       └─ build() → Scaffold
            ├─ AppBar('Comida') + TabBar(['Registrar', 'Historial'])
@@ -705,6 +822,38 @@ MealFoodItem (clase inmutable)               [lib/models/meal.dart]
 MealType (enum) + MealTypeLabel (extension)  [lib/models/meal.dart]
  └─ breakfast, lunch, snack, dinner, other
     → label: String ('Desayuno', 'Almuerzo', 'Once/Merienda', 'Cena', 'Otro/Snack')
+
+MealGlucoseReminder (clase inmutable)        [lib/models/meal_glucose_reminder.dart]
+ ├─ id: int?; mealId: int; offsetMinutes: int; dueAt: DateTime
+ ├─ status: MealGlucoseReminderStatus
+ ├─ resolvedMeasurementId: int?
+ └─ copyWith(...), ==, hashCode, toString()
+
+MealGlucoseReminderStatus (enum)             [lib/models/meal_glucose_reminder.dart]
+ └─ pending | resolvedAutomatically | resolvedManually | dismissed
+
+MealGlucoseReminderRepository (interfaz abstracta)  [lib/services/meal_glucose_reminder_repository.dart]
+ ├─ addReminders(reminders) → Future<List<MealGlucoseReminder>>
+ ├─ getPendingDueBy(now) → Future<List<MealGlucoseReminder>>
+ └─ updateStatus(id, status, resolvedMeasurementId?) → Future<void>
+
+SqliteMealGlucoseReminderRepository          [lib/services/meal_glucose_reminder_repository.dart]
+ ├─ constructor({factory, databasePath, singleInstance}) / .withDatabase(AppDatabase)
+ ├─ tabla `meal_glucose_reminders` (FK meal_id con ON DELETE CASCADE)
+ ├─ addReminders() → transacción SQLite en lote
+ └─ getPendingDueBy() → pending vencidos, ordenados por due_at/id
+
+MealGlucoseReminderCoordinator               [lib/services/meal_glucose_reminder_coordinator.dart]
+ ├─ offsetsMinutes = [60, 90]; tolerancia CGM = ±10 minutos
+ ├─ addRemindersForMeal(meal) → crea/persiste los dos recordatorios
+ ├─ reviewPending() → intenta importar CGM, auto-resuelve coincidencias
+ │    y devuelve PendingMealGlucoseReminder para acción manual
+ ├─ isDaytime(at) → true entre 07:00 (incl.) y 22:00 (excl.)
+ ├─ dismiss(reminder) → status dismissed
+ └─ resolveManually(reminder, measurement) → guarda medición + status resolvedManually
+
+MealGlucoseReminderReviewResult / PendingMealGlucoseReminder
+ └─ separan auto-resueltos y pendientes manuales, con flag isDaytime
 
 MedicationRepository (interfaz abstracta)    [lib/services/medication_repository.dart]
  ├─ getAllIntakes() → Future<List<MedicationIntake>>   # más reciente → más antigua, con items
@@ -962,8 +1111,22 @@ flowchart LR
     MS -- "Tab 'Registrar'" --> MF[_MealForm]
     MF -- "Guardar: onSave(meal)" --> MS
     MS -- "addMeal(meal)" --> RF[(SQLite\nmeals/foods/meal_food_items)]
+    MS -- "addRemindersForMeal(saved)" --> RC[MealGlucoseReminderCoordinator]
+    RC -- "+60/+90 min" --> RR[(SQLite\nmeal_glucose_reminders)]
     MS -- "animateTo(1)" --> MH[_MealHistoryList]
     MH -- "getAllMeals()" --> RF
+    B -- "initState: reviewPending()" --> RC
+    RC -- "getPendingDueBy(now)" --> RR
+    RC -- "importar/buscar medición ±10 min" --> R
+    RC -- "sin coincidencia" --> RA{"¿Horario diurno?"}
+    RA -- sí --> RSND["Sonido + AlertDialog"]
+    RA -- no --> RSL["AlertDialog silencioso"]
+    RSND -- "Registrar ahora" --> C
+    RSL -- "Registrar ahora" --> C
+    C -- "resolveManually()" --> R
+    C -- "actualiza status" --> RR
+    RSND -- Descartar --> RR
+    RSL -- Descartar --> RR
     B -- tap 'Medicamentos' --> DS[MedicationScreen]
     DS -- "Tab 'Registrar'" --> DF[_MedicationForm]
     DF -- "Guardar: onSave(intake)" --> DS
@@ -1013,6 +1176,7 @@ seguimiento_glucosa/
 │   │   ├── glucose_measurement.dart → GlucoseMeasurement, GlucoseMoment
 │   │   ├── food.dart             → Food
 │   │   ├── meal.dart             → Meal, MealFoodItem, MealType
+│   │   ├── meal_glucose_reminder.dart → MealGlucoseReminder, MealGlucoseReminderStatus
 │   │   ├── medication.dart       → Medication, DoseUnit
 │   │   ├── medication_intake.dart → MedicationIntake, MedicationIntakeItem
 │   │   ├── biometric_measurement.dart → BiometricMeasurement
@@ -1032,6 +1196,8 @@ seguimiento_glucosa/
 │       ├── app_database.dart      → AppDatabase (conexión SQLite compartida)
 │       ├── glucose_repository.dart → GlucoseRepository, SqliteGlucoseRepository
 │       ├── meal_repository.dart    → MealRepository, SqliteMealRepository
+│       ├── meal_glucose_reminder_repository.dart → interfaz + implementación SQLite
+│       ├── meal_glucose_reminder_coordinator.dart → ciclo de vida de recordatorios
 │       ├── medication_repository.dart → MedicationRepository, SqliteMedicationRepository
 │       ├── biometric_repository.dart → BiometricRepository, SqliteBiometricRepository
 │       ├── user_profile_repository.dart → UserProfileRepository, SqliteUserProfileRepository
@@ -1042,12 +1208,15 @@ seguimiento_glucosa/
 │       ├── glucose_import_repository.dart → GlucoseImportRepository, HealthImportException
 │       └── health_glucose_import_repository.dart → HealthGlucoseImportRepository
 ├── test/
-│   ├── widget_test.dart     → OK (HomeScreen + HistoryScreen + MealScreen + MedicationScreen + BiometricScreen (perfil/IMC) + AuthScreen + respaldo/restauración + importación CGM)
+│   ├── widget_test.dart     → OK (36 tests: navegación, módulos, perfil/IMC,
+│   │                           auth, backup, CGM y recordatorios in-app)
 │   ├── models/
 │   │   └── user_profile_test.dart → OK (7 tests, UserProfile.bmiFor/bmiCategoryFor/copyWith, sin Flutter ni sqflite)
 │   └── services/
 │       ├── glucose_repository_test.dart    → OK (5 tests, SqliteGlucoseRepository con sqflite_common_ffi)
 │       ├── meal_repository_test.dart       → OK (5 tests, SqliteMealRepository con sqflite_common_ffi)
+│       ├── meal_glucose_reminder_repository_test.dart → OK (5 tests, SQLite FFI)
+│       ├── meal_glucose_reminder_coordinator_test.dart → OK (15 tests, fakes en memoria)
 │       ├── medication_repository_test.dart → OK (6 tests, SqliteMedicationRepository con sqflite_common_ffi)
 │       ├── biometric_repository_test.dart  → OK (7 tests, SqliteBiometricRepository con sqflite_common_ffi)
 │       └── user_profile_repository_test.dart → OK (5 tests, SqliteUserProfileRepository con sqflite_common_ffi)
@@ -1091,18 +1260,20 @@ seguimiento_glucosa/
 | 21 | Sin integración con sensores/CGM | — | ✅ Resuelto (`GlucoseImportRepository`/`HealthGlucoseImportRepository`, importación manual de solo lectura desde Google Health Connect/Apple Health vía el plugin `health`; botón "Importar desde sensor" en `HistoryScreen`, solo con `importRepository` inyectado) |
 | 22 | Importación desde sensores/CGM sin probar en dispositivo/emulador real | — | ⏳ Pendiente (validado por `flutter analyze`/`flutter test`/`flutter build apk --debug`, pero no con una ejecución interactiva contra Health Connect real ni con datos de prueba reales) |
 | 23 | Perfil de usuario sin soporte multiusuario real | — | ⏳ Pendiente a sabiendas (patrón "singleton row" en `user_profile`: un único perfil por dispositivo, independiente del `uid` de Firebase Auth; suficiente para el alcance actual de la app) |
+| 24 | Sin recordatorios post-comida | — | ✅ Resuelto en Fase A (`MealGlucoseReminder`, repositorio SQLite, coordinador y diálogos in-app); notificaciones/alarmas reales fuera de la app quedan para Fase B. |
 
-Verificación ejecutada tras el último cambio (perfil de usuario e IMC):
+Verificación ejecutada tras el último cambio (recordatorios post-comida,
+Fase A):
 
 ```text
-dart format lib test → Formatted 4 files (4 changed)
-flutter analyze  → No issues found!
-flutter test     → All tests passed! (67/67: 53 anteriores + 14 nuevos
-                    de perfil de usuario/IMC, sin ninguna regresión)
-flutter build apk --debug → √ Built build\app\outputs\flutter-apk\app-debug.apk
-                    (compilación real exitosa, sin cambios de dependencias
-                    nativas: solo una tabla SQLite nueva, _schemaVersion = 6)
+dart format lib test → sin cambios pendientes
+flutter analyze      → No issues found!
+flutter test         → All tests passed! (91/91: 36 widgets + 55 unitarios)
 ```
+
+No se volvió a ejecutar `flutter build apk --debug` en esta iteración: no se
+agregaron dependencias nativas; los cambios son lógica Dart, widgets y una
+migración SQLite (`_schemaVersion = 7`).
 
 ---
 

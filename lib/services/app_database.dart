@@ -39,7 +39,7 @@ class AppDatabase {
   /// Versión actual del esquema. Cada tabla nueva debe sumar su creación en
   /// [_onCreate] (instalaciones nuevas) y en [_onUpgrade] (instalaciones
   /// existentes), incrementando este número.
-  static const _schemaVersion = 6;
+  static const _schemaVersion = 7;
 
   final DatabaseFactory _databaseFactory;
   final String? _databasePath;
@@ -87,6 +87,7 @@ class AppDatabase {
     await db.execute(_createMedicationIntakeItemsTable);
     await db.execute(_createBiometricMeasurementsTable);
     await db.execute(_createUserProfileTable);
+    await db.execute(_createMealGlucoseRemindersTable);
   }
 
   Future<void> _upgrade(Database db, int oldVersion) async {
@@ -116,6 +117,9 @@ class AppDatabase {
     }
     if (oldVersion < 6) {
       await db.execute(_createUserProfileTable);
+    }
+    if (oldVersion < 7) {
+      await db.execute(_createMealGlucoseRemindersTable);
     }
   }
 
@@ -201,6 +205,17 @@ class AppDatabase {
       birth_date TEXT,
       biological_sex TEXT,
       display_name TEXT
+    )
+  ''';
+
+  static const _createMealGlucoseRemindersTable = '''
+    CREATE TABLE meal_glucose_reminders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      meal_id INTEGER NOT NULL REFERENCES meals (id) ON DELETE CASCADE,
+      offset_minutes INTEGER NOT NULL,
+      due_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      resolved_measurement_id INTEGER
     )
   ''';
 }

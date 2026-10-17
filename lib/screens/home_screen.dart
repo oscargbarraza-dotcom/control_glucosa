@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/glucose_measurement.dart';
+import '../models/meal_glucose_reminder.dart';
 import '../services/app_database.dart';
 import '../services/auth_repository.dart';
 import '../services/backup_repository.dart';
@@ -10,6 +14,8 @@ import '../services/firestore_backup_repository.dart';
 import '../services/glucose_import_repository.dart';
 import '../services/glucose_repository.dart';
 import '../services/health_glucose_import_repository.dart';
+import '../services/meal_glucose_reminder_coordinator.dart';
+import '../services/meal_glucose_reminder_repository.dart';
 import '../services/meal_repository.dart';
 import '../services/medication_repository.dart';
 import '../services/user_profile_repository.dart';
@@ -40,6 +46,8 @@ class HomeScreen extends StatefulWidget {
     this.enableCloudBackup = false,
     this.importRepository,
     this.enableHealthImport = false,
+    this.reminderRepository,
+    this.enableMealReminders = false,
   });
 
   /// Repositorio de mediciones de glucosa. Si es `null`, se usa
@@ -101,6 +109,20 @@ class HomeScreen extends StatefulWidget {
   /// real en los widget tests; `main.dart` lo activa explícitamente.
   final bool enableHealthImport;
 
+  /// Repositorio de recordatorios de glucosa post-comida. Si es `null`,
+  /// se usa [SqliteMealGlucoseReminderRepository] sobre la misma base de
+  /// datos compartida que [repository].
+  final MealGlucoseReminderRepository? reminderRepository;
+
+  /// Habilita la revisión automática de recordatorios de glucosa
+  /// post-comida al abrir esta pantalla (ver
+  /// [MealGlucoseReminderCoordinator.reviewPending]), mostrando un
+  /// diálogo por cada uno que siga pendiente tras intentar resolverlo
+  /// vía sensores/CGM. Por defecto es `false` para que los widget tests
+  /// no deban lidiar con diálogos inesperados; `main.dart` lo activa
+  /// explícitamente.
+  final bool enableMealReminders;
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -159,6 +181,15 @@ class _HomeScreenState extends State<HomeScreen> {
       (widget.enableHealthImport
           ? HealthGlucoseImportRepository(glucoseRepository: _repository)
           : null);
+  late final MealGlucoseReminderRepository _reminderRepository =
+      widget.reminderRepository ??
+      SqliteMealGlucoseReminderRepository.withDatabase(_sharedDatabase);
+  late final MealGlucoseReminderCoordinator _reminderCoordinator =
+      MealGlucoseReminderCoordinator(
+        reminderRepository: _reminderRepository,
+        glucoseRepository: _repository,
+        importRepository: _importRepository,
+      );
 
   GlucoseMeasurement? _lastMeasurement;
   bool _isLoading = true;
@@ -167,6 +198,93 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadLastMeasurement();
+    if (widget.enableMealReminders) {
+      _reviewPendingReminders();
+    }
+  }
+
+  /// Revisa los recordatorios de glucosa post-comida vencidos: los que se
+  /// resuelven solos (vía CGM) quedan registrados sin interrumpir al
+  /// usuario; los que requieren acción manual se muestran uno por uno en
+  /// un diálogo (alarma sonora de día, popup silencioso de noche).
+  Future<void> _reviewPendingReminders() async {
+    final result = await _reminderCoordinator.reviewPending();
+    if (!mounted || result.needsManualAction.isEmpty) {
+      return;
+    }
+
+    for (final pending in result.needsManualAction) {
+      if (!mounted) {
+        return;
+      }
+      if (pending.isDaytime) {
+        // El sonido es un complemento best-effort: si la plataforma no
+        // puede reproducirlo (por ejemplo, el canal no está disponible
+        // en un entorno de pruebas), el diálogo debe mostrarse igual. Se
+        // evita bloquear el flujo esperando su resultado.
+        unawaited(SystemSound.play(SystemSoundType.alert).catchError((_) {}));
+      }
+      await _showReminderDialog(pending);
+    }
+  }
+
+  Future<void> _showReminderDialog(PendingMealGlucoseReminder pending) async {
+    final reminder = pending.reminder;
+    final action = await showDialog<_ReminderDialogAction>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          pending.isDaytime ? Icons.alarm : Icons.nightlight_round,
+          color: Colors.deepPurple,
+        ),
+        title: const Text('Hora de medir tu glucosa'),
+        content: Text(
+          'Han pasado ${reminder.offsetMinutes} minutos desde tu comida. '
+          'Registra tu nivel de glucosa para completar el seguimiento.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(context, _ReminderDialogAction.dismiss),
+            child: const Text('Descartar'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(context, _ReminderDialogAction.register),
+            child: const Text('Registrar ahora'),
+          ),
+        ],
+      ),
+    );
+
+    if (action == _ReminderDialogAction.register) {
+      await _registerReminderMeasurement(reminder);
+    } else {
+      await _reminderCoordinator.dismiss(reminder);
+    }
+  }
+
+  Future<void> _registerReminderMeasurement(
+    MealGlucoseReminder reminder,
+  ) async {
+    final result = await Navigator.push<GlucoseMeasurement>(
+      context,
+      MaterialPageRoute(builder: (context) => const GlucoseScreen()),
+    );
+
+    if (result == null) {
+      await _reminderCoordinator.dismiss(reminder);
+      return;
+    }
+
+    final saved = await _reminderCoordinator.resolveManually(reminder, result);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _lastMeasurement = saved;
+    });
   }
 
   Future<void> _loadLastMeasurement() async {
@@ -216,7 +334,10 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MealScreen(repository: _mealRepository),
+        builder: (context) => MealScreen(
+          repository: _mealRepository,
+          reminderCoordinator: _reminderCoordinator,
+        ),
       ),
     );
   }
@@ -404,3 +525,7 @@ class MenuButton extends StatelessWidget {
     );
   }
 }
+
+/// Acción elegida por el usuario en el diálogo de un recordatorio de
+/// glucosa post-comida.
+enum _ReminderDialogAction { register, dismiss }

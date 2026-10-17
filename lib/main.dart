@@ -49,6 +49,7 @@ class SeguimientoGlucosaApp extends StatelessWidget {
         authRepository: authRepository,
         enableCloudBackup: true,
         enableHealthImport: true,
+        enableMealReminders: true,
       ),
     );
   }

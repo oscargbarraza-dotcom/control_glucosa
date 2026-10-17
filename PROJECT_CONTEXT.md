@@ -506,14 +506,21 @@ Decisiones de diseño registradas:
 
 ### Alertas
 
-Pendiente.
+Parcialmente implementado.
 
-No existe implementación de:
+* Recordatorios de medición post-comida (60 y 90 minutos tras guardar
+  una comida): **Fase A hecha** — lógica, persistencia y diálogo
+  in-app (`MealGlucoseReminder`/`MealGlucoseReminderRepository`/
+  `MealGlucoseReminderCoordinator`), sin notificaciones reales del
+  sistema. Ver roadmap punto 17 y la entrada correspondiente en
+  Historial de cambios.
 
-* Alarmas.
-* Recordatorios.
-* Alertas por rango.
-* Notificaciones.
+Pendiente:
+
+* Fase B: notificaciones/alarmas reales fuera de la app (la app debe
+  estar cerrada o en background y el usuario debe recibir el aviso
+  igual).
+* Alertas por valores altos/bajos de glucosa.
 
 ---
 
@@ -768,6 +775,9 @@ El modelo conceptual inicial considerado fue:
 * BIOMETRIA — ✅ implementada parcialmente (tabla
   `biometric_measurements`: peso corporal obligatorio, presión arterial
   y frecuencia cardíaca opcionales; IMC queda pendiente).
+* RECORDATORIO_MEDICION — ✅ implementada parcialmente, Fase A (tabla
+  `meal_glucose_reminders`; Fase B de notificaciones reales queda
+  pendiente).
 * CONTROL — pendiente.
 
 ---
@@ -906,6 +916,28 @@ fechaHora:
 
 ---
 
+## Entidad: Recordatorio de medición post-comida
+
+Implementado formalmente como tabla SQLite `meal_glucose_reminders`:
+
+```text
+meal_glucose_reminders
+
+id                        INTEGER PRIMARY KEY AUTOINCREMENT
+meal_id                   INTEGER NOT NULL
+                            REFERENCES meals (id) ON DELETE CASCADE
+offset_minutes            INTEGER NOT NULL   -- 60 o 90
+due_at                    TEXT NOT NULL      -- fecha/hora en formato ISO 8601
+status                    TEXT NOT NULL      -- nombre del enum MealGlucoseReminderStatus
+resolved_measurement_id   INTEGER            -- id de glucose_measurements, si ya se resolvió
+```
+
+Cada `meals` insertada genera dos filas (60 y 90 minutos) cuando se
+inyecta un `MealGlucoseReminderCoordinator` en `MealScreen`. Al
+borrar la comida, sus recordatorios se eliminan en cascada.
+
+---
+
 ## Formato de almacenamiento
 
 Decidido e implementado: SQLite (`sqflite`), 100% local.
@@ -966,13 +998,15 @@ arriba).
 
 ## Alertas
 
-No implementado.
+Parcialmente implementado: recordatorios de medición post-comida
+(Fase A, ver sección "Alertas" bajo "Pantallas creadas" y roadmap
+punto 17).
 
 Ideas futuras:
 
-* Recordatorios de medición.
-* Alertas por valores altos/bajos.
-* Integración con modo noche.
+* Fase B de recordatorios: notificaciones/alarmas reales del sistema
+  (funcionando con la app cerrada o en background).
+* Alertas por valores altos/bajos de glucosa.
 
 ---
 
@@ -1096,11 +1130,22 @@ Contiene:
 * Navegación hacia `GlucoseScreen`, `HistoryScreen`, `MealScreen` y
   `MedicationScreen`.
 * Una `AppDatabase` compartida (`_sharedDatabase`, `late final`), usada
-  para construir
-  `SqliteGlucoseRepository`/`SqliteMealRepository`/`SqliteMedicationRepository`
-  por defecto cuando no se inyectan repositorios explícitos; al ser
-  `late`, nunca se construye si los tres repositorios llegan inyectados
-  (como en tests), evitando acceder a `sqflite` fuera de un entorno real.
+  para construir todos los repositorios SQLite por defecto (glucosa,
+  comidas, medicamentos, biometría, perfil, recordatorios) cuando no
+  se inyectan explícitos; al ser `late`, nunca se construye si todos
+  llegan inyectados (como en tests), evitando acceder a `sqflite`
+  fuera de un entorno real.
+* Flags `enable*` (`enableCloudBackup`, `enableHealthImport`,
+  `enableMealReminders`), todos `false` por defecto: activan
+  integraciones que dependen de plugins/servicios externos
+  (Firestore, Health Connect/Apple Health, diálogo de recordatorios
+  post-comida) solo cuando `main.dart` los pasa explícitamente en
+  `true`, para que los widget tests no se vean afectados.
+* `_reviewPendingReminders`/`_showReminderDialog`/
+  `_registerReminderMeasurement`: revisión de recordatorios vencidos
+  en `initState` (si `enableMealReminders` es `true`) y el
+  `AlertDialog` secuencial que muestran (ver la entrada de Historial
+  de cambios "Recordatorios de medición post-comida, Fase A").
 
 ---
 
@@ -1183,8 +1228,10 @@ Contiene:
   comentario opcional. Valida que haya al menos un alimento antes de
   guardar.
 * Al guardar (`_handleMealSaved` en `MealScreen`), persiste la comida vía
-  `MealRepository.addMeal`, recarga el historial, cambia automáticamente
-  a la pestaña Historial y muestra un `SnackBar` de confirmación.
+  `MealRepository.addMeal`, genera sus dos recordatorios de medición
+  (60 y 90 minutos) si se inyectó un `reminderCoordinator`, recarga el
+  historial, cambia automáticamente a la pestaña Historial y muestra
+  un `SnackBar` de confirmación.
 * `_MealHistoryList`/`_MealTile`: listan las comidas (más reciente a más
   antigua) con tipo, fecha/hora (`intl`), resumen de alimentos
   (`"Nombre (cantidad)"` separados por coma) y comentario si existe.
@@ -1289,14 +1336,20 @@ repositorios, incluyendo creación y migración de esquema.
 Contiene:
 
 * `AppDatabase`: abre (de forma perezosa, vía el getter `database`) la
-  base de datos `seguimiento_glucosa.db`, con `onCreate` (crea las 7
+  base de datos `seguimiento_glucosa.db`, con `onCreate` (crea las 9
   tablas: `glucose_measurements`, `foods`, `meals`, `meal_food_items`,
-  `medications`, `medication_intakes`, `medication_intake_items`) y
-  `onUpgrade` (migración versionada; `_schemaVersion = 2` sumó las 3
-  tablas de comidas sobre la versión 1 de solo glucosa, y
-  `_schemaVersion = 3` sumó las 3 tablas de medicamentos). Activa
+  `medications`, `medication_intakes`, `medication_intake_items`,
+  `biometric_measurements`, `user_profile`, `meal_glucose_reminders`)
+  y `onUpgrade` (migración versionada; `_schemaVersion = 2` sumó las 3
+  tablas de comidas sobre la versión 1 de solo glucosa,
+  `_schemaVersion = 3` sumó las 3 tablas de medicamentos,
+  `_schemaVersion = 4` sumó `biometric_measurements`,
+  `_schemaVersion = 5` sumó presión/frecuencia cardíaca opcionales a
+  esa tabla, `_schemaVersion = 6` sumó `user_profile`, y
+  `_schemaVersion = 7` (actual) sumó `meal_glucose_reminders`). Activa
   `PRAGMA foreign_keys = ON` en `onConfigure` para que `ON DELETE CASCADE`
-  funcione al borrar una comida o una toma de medicamentos.
+  funcione al borrar una comida (incluye sus recordatorios) o una toma
+  de medicamentos.
 * Centralizar esto evita que cada repositorio administre su propia
   versión de esquema de forma independiente (lo que se desincronizaría
   fácilmente al agregar más tablas).
@@ -1387,6 +1440,49 @@ Contiene:
   lugar de distinguir entre crear y actualizar). Soporta los mismos
   parámetros de inyección que `SqliteBiometricRepository`
   (`factory`/`databasePath`/`singleInstance`/`.withDatabase`).
+
+---
+
+## lib/models/meal_glucose_reminder.dart
+
+Función:
+
+Modelo inmutable `MealGlucoseReminder` (id, mealId, offsetMinutes,
+dueAt, status, resolvedMeasurementId) y el enum
+`MealGlucoseReminderStatus` (pending, resolvedAutomatically,
+resolvedManually, dismissed). Representa un recordatorio de medir
+glucosa a los 60 o 90 minutos de una comida.
+
+---
+
+## lib/services/meal_glucose_reminder_repository.dart
+
+Función:
+
+Capa de persistencia de los recordatorios de medición post-comida.
+
+Contiene:
+
+* `MealGlucoseReminderRepository`: interfaz abstracta
+  (`addReminders`, `getPendingDueBy`, `updateStatus`).
+* `SqliteMealGlucoseReminderRepository`: implementación basada en
+  `sqflite`, sobre la tabla `meal_glucose_reminders`. Soporta los
+  mismos parámetros de inyección que `SqliteBiometricRepository`
+  (`factory`/`databasePath`/`singleInstance`/`.withDatabase`).
+
+---
+
+## lib/services/meal_glucose_reminder_coordinator.dart
+
+Función:
+
+Lógica pura de aplicación (sin widgets) que orquesta el ciclo de vida
+completo de los recordatorios: generación al guardar una comida,
+intento de auto-resolución vía sensores/CGM al revisar pendientes, y
+resolución o descarte manual. Ver la entrada correspondiente en
+Historial de cambios para el detalle de cada método
+(`addRemindersForMeal`, `reviewPending`, `dismiss`,
+`resolveManually`, `isDaytime`).
 
 ---
 
@@ -1497,10 +1593,131 @@ Prioridad futura:
     pestaña Perfil en el módulo de Biometría, y cálculo de IMC
     (`UserProfile.bmiFor`) mostrado en el Historial de Biometría. Ver
     Historial de cambios.
+17. ✅ Recordatorios de medición post-comida — Fase A: lógica,
+    persistencia y diálogo in-app (`MealGlucoseReminder`,
+    `MealGlucoseReminderRepository`/`SqliteMealGlucoseReminderRepository`,
+    `MealGlucoseReminderCoordinator`), sin notificaciones reales del
+    sistema todavía. Ver Historial de cambios. Fase B (notificaciones/
+    alarmas reales fuera de la app) queda pendiente para una iteración
+    futura.
 
 ---
 
 # Historial de cambios
+
+## 2026-08-22 — Recordatorios de medición post-comida, Fase A (lógica/persistencia/diálogo in-app)
+
+* Decisiones de alcance (confirmadas con el usuario antes de
+  implementar):
+  * Se dividió el trabajo en dos fases: **Fase A** (esta entrada) cubre
+    la lógica de dominio, la persistencia y la interacción dentro de la
+    app (sin notificaciones push ni alarmas del sistema operativo).
+    **Fase B** (notificaciones/alarmas reales fuera de la app) se
+    abordará en un turno separado.
+  * No se creó una pantalla nueva: los recordatorios vencidos se
+    muestran como un `AlertDialog` secuencial al abrir `HomeScreen`
+    (uno por recordatorio pendiente), en lugar de una bandeja de
+    notificaciones o pantalla dedicada.
+  * De día (07:00 inclusive–22:00 exclusivo) el diálogo se acompaña de
+    `SystemSound.play(SystemSoundType.alert)` ("alarma"); de noche es
+    un popup silencioso. La franja horaria se calcula sobre la hora
+    local del dispositivo en el momento de revisar los pendientes, no
+    sobre la hora en que venció el recordatorio.
+  * La medición registrada manualmente desde el diálogo se guarda como
+    una `GlucoseMeasurement` normal del historial (sin ningún campo de
+    vínculo en el modelo): solo se le autogenera el comentario
+    `'Medición post-comida (+N min).'` cuando el usuario no escribió
+    uno propio, siguiendo el mismo patrón que usa la importación CGM
+    con "Importado desde...".
+  * Tolerancia de auto-resolución vía sensor/CGM: ±10 minutos respecto
+    a la hora exacta en que correspondía medir (`dueAt`). Si existe una
+    medición del historial (incluida una recién importada del sensor)
+    dentro de ese rango y no utilizada por otro recordatorio, el
+    recordatorio se marca `resolvedAutomatically` sin interrumpir al
+    usuario.
+* `lib/models/meal_glucose_reminder.dart` (nuevo): modelo inmutable
+  `MealGlucoseReminder` (`id`, `mealId`, `offsetMinutes`, `dueAt`,
+  `status`, `resolvedMeasurementId`), con `copyWith`/`==`/`hashCode`/
+  `toString` siguiendo el mismo patrón que los demás modelos. El enum
+  `MealGlucoseReminderStatus` tiene cuatro valores: `pending`,
+  `resolvedAutomatically`, `resolvedManually`, `dismissed`.
+* `lib/services/app_database.dart`: `_schemaVersion` subido a `7`; se
+  agregó la tabla `meal_glucose_reminders` (`meal_id` con
+  `REFERENCES meals (id) ON DELETE CASCADE`, `offset_minutes`,
+  `due_at`, `status`, `resolved_measurement_id`), creada tanto en
+  `_createAll` como en `_upgrade` (rama `oldVersion < 7`).
+* `lib/services/meal_glucose_reminder_repository.dart` (nuevo):
+  interfaz `MealGlucoseReminderRepository` (`addReminders`,
+  `getPendingDueBy`, `updateStatus`) e implementación
+  `SqliteMealGlucoseReminderRepository` (constructores normal y
+  `.withDatabase`, mismo patrón de inyección que
+  `SqliteBiometricRepository`). `addReminders` inserta varios
+  recordatorios de una sola comida en lote.
+* `lib/services/meal_glucose_reminder_coordinator.dart` (nuevo):
+  `MealGlucoseReminderCoordinator`, lógica pura de aplicación (sin
+  widgets) que orquesta todo el ciclo de vida:
+  * `isDaytime(DateTime)`: franja diurna 07:00 (inclusive)–22:00
+    (exclusivo).
+  * `addRemindersForMeal(Meal)`: genera los dos recordatorios (+60 y
+    +90 minutos desde `Meal.eatenAt`) al guardar una comida.
+  * `reviewPending()`: busca los recordatorios vencidos
+    (`getPendingDueBy(now)`), intenta importar mediciones nuevas del
+    sensor/CGM si hay un `GlucoseImportRepository` disponible, y por
+    cada uno busca en el historial la medición no usada más cercana a
+    `dueAt` dentro de ±10 minutos; si la encuentra, lo marca
+    `resolvedAutomatically`; si no, lo devuelve como
+    `PendingMealGlucoseReminder` (con su flag `isDaytime`) para que la
+    UI lo muestre. Devuelve un `MealGlucoseReminderReviewResult`
+    (separa resueltos automáticamente de los que necesitan acción
+    manual).
+  * `dismiss(reminder)`: marca `dismissed` sin asociar medición.
+  * `resolveManually(reminder, measurement)`: guarda la medición
+    tomada manualmente (autogenerando el comentario si falta, ver
+    decisión de alcance arriba) y marca el recordatorio
+    `resolvedManually` con el `id` de la medición guardada.
+* `lib/screens/meal_screen.dart`: nuevo parámetro opcional
+  `reminderCoordinator`; si no es `null`, `_handleMealSaved` llama a
+  `reminderCoordinator.addRemindersForMeal(saved)` justo después de
+  guardar la comida.
+* `lib/screens/home_screen.dart`: nuevos parámetros `reminderRepository`
+  y `enableMealReminders` (`false` por defecto, mismo patrón de flag
+  que `enableHealthImport`/`enableCloudBackup`, para que los widget
+  tests existentes no se vean afectados por diálogos inesperados).
+  Construye `_reminderRepository`/`_reminderCoordinator` igual que los
+  demás repositorios (reutilizando `_sharedDatabase` e
+  `_importRepository` si existe). En `initState`, si
+  `enableMealReminders` es `true`, llama a `_reviewPendingReminders()`,
+  que muestra un `AlertDialog` por cada `needsManualAction` (ícono de
+  alarma o luna según `isDaytime`, botones "Registrar ahora" y
+  "Descartar"). "Registrar ahora" navega a `GlucoseScreen` y llama a
+  `resolveManually`; "Descartar" (o cerrar sin guardar) llama a
+  `dismiss`. El `SystemSound.play` de día se dispara con `unawaited`
+  (no se espera su resultado) para no bloquear la aparición del
+  diálogo si el canal de sonido de la plataforma no está disponible
+  (por ejemplo, en el entorno de pruebas).
+* `lib/main.dart`: pasa `enableMealReminders: true` al construir
+  `HomeScreen`.
+* Tests: `test/services/meal_glucose_reminder_repository_test.dart`
+  (persistencia en lote, filtrado por vencimiento, actualización de
+  estado) y `test/services/meal_glucose_reminder_coordinator_test.dart`
+  (15 tests: franja horaria, generación de recordatorios, las
+  distintas ramas de `reviewPending` incluyendo auto-resolución con
+  tolerancia de ±10 minutos, `dismiss`, `resolveManually` con/sin
+  comentario propio). En `test/widget_test.dart` se agregó
+  `_FakeMealGlucoseReminderRepository` y 4 widget tests nuevos
+  (mostrar el diálogo al abrir `HomeScreen` con un recordatorio
+  vencido; descartar; registrar ahora y verificar comentario
+  autogenerado + estado `resolvedManually`; auto-resolución vía CGM
+  fake sin mostrar diálogo), además de inyectar
+  `_FakeMealGlucoseReminderRepository` en los tests existentes que
+  navegan a `MealScreen` para no activar `sqflite` real.
+* Validación completa: `dart format` (sin cambios tras aplicarlo);
+  `flutter analyze` (sin issues); `flutter test` (91/91 OK: 67
+  anteriores + tests nuevos de modelo/repositorio/coordinador + 4
+  widget tests nuevos).
+* `PROJECT_CONTEXT.md` y `PROJECT_GRAPH.md` actualizados (paso #17 del
+  roadmap marcado como hecho, sección "Alertas" actualizada, esquema
+  de base de datos y archivos importantes documentados).
 
 ## 2026-08-21 — Perfil de usuario e IMC en el módulo de Biometría
 

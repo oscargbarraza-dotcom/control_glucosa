@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../models/food.dart';
 import '../models/meal.dart';
+import '../services/meal_glucose_reminder_coordinator.dart';
 import '../services/meal_repository.dart';
 
 /// Pantalla del módulo de Comidas, con dos pestañas: **Registrar** (nueva
@@ -13,10 +14,21 @@ import '../services/meal_repository.dart';
 /// conviven en la misma pantalla para que, tras guardar, el usuario vea de
 /// inmediato el resultado en la pestaña de historial.
 class MealScreen extends StatefulWidget {
-  const MealScreen({super.key, required this.repository});
+  const MealScreen({
+    super.key,
+    required this.repository,
+    this.reminderCoordinator,
+  });
 
   /// Repositorio desde el que se cargan y guardan las comidas.
   final MealRepository repository;
+
+  /// Coordinador de recordatorios de glucosa post-comida. Si no es
+  /// `null`, cada comida guardada genera automáticamente sus dos
+  /// recordatorios (60 y 90 minutos). Si es `null`, no se generan
+  /// recordatorios (por ejemplo, en tests que no necesitan probar esta
+  /// funcionalidad).
+  final MealGlucoseReminderCoordinator? reminderCoordinator;
 
   @override
   State<MealScreen> createState() => _MealScreenState();
@@ -43,7 +55,8 @@ class _MealScreenState extends State<MealScreen>
   }
 
   Future<void> _handleMealSaved(Meal meal) async {
-    await widget.repository.addMeal(meal);
+    final saved = await widget.repository.addMeal(meal);
+    await widget.reminderCoordinator?.addRemindersForMeal(saved);
     if (!mounted) {
       return;
     }

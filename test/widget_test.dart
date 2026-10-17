@@ -24,6 +24,7 @@ import 'package:seguimiento_glucosa/models/biometric_measurement.dart';
 import 'package:seguimiento_glucosa/models/food.dart';
 import 'package:seguimiento_glucosa/models/glucose_measurement.dart';
 import 'package:seguimiento_glucosa/models/meal.dart';
+import 'package:seguimiento_glucosa/models/meal_glucose_reminder.dart';
 import 'package:seguimiento_glucosa/models/medication.dart';
 import 'package:seguimiento_glucosa/models/medication_intake.dart';
 import 'package:seguimiento_glucosa/models/user_profile.dart';
@@ -33,6 +34,7 @@ import 'package:seguimiento_glucosa/services/backup_repository.dart';
 import 'package:seguimiento_glucosa/services/biometric_repository.dart';
 import 'package:seguimiento_glucosa/services/glucose_import_repository.dart';
 import 'package:seguimiento_glucosa/services/glucose_repository.dart';
+import 'package:seguimiento_glucosa/services/meal_glucose_reminder_repository.dart';
 import 'package:seguimiento_glucosa/services/meal_repository.dart';
 import 'package:seguimiento_glucosa/services/medication_repository.dart';
 import 'package:seguimiento_glucosa/services/user_profile_repository.dart';
@@ -115,6 +117,48 @@ class _FakeMealRepository implements MealRepository {
 
   @override
   Future<List<Food>> getAllFoods() async => List.unmodifiable(_foods);
+}
+
+/// Repositorio de recordatorios de glucosa post-comida en memoria usado
+/// solo en pruebas, para evitar llamadas al plugin real de `sqflite`
+/// durante los widget tests.
+class _FakeMealGlucoseReminderRepository
+    implements MealGlucoseReminderRepository {
+  final List<MealGlucoseReminder> _reminders = [];
+  int _nextId = 1;
+
+  @override
+  Future<List<MealGlucoseReminder>> addReminders(
+    List<MealGlucoseReminder> reminders,
+  ) async {
+    final saved = reminders.map((r) => r.copyWith(id: _nextId++)).toList();
+    _reminders.addAll(saved);
+    return saved;
+  }
+
+  @override
+  Future<List<MealGlucoseReminder>> getPendingDueBy(DateTime now) async {
+    return _reminders
+        .where(
+          (r) =>
+              r.status == MealGlucoseReminderStatus.pending &&
+              !r.dueAt.isAfter(now),
+        )
+        .toList();
+  }
+
+  @override
+  Future<void> updateStatus(
+    int id, {
+    required MealGlucoseReminderStatus status,
+    int? resolvedMeasurementId,
+  }) async {
+    final index = _reminders.indexWhere((r) => r.id == id);
+    _reminders[index] = _reminders[index].copyWith(
+      status: status,
+      resolvedMeasurementId: resolvedMeasurementId,
+    );
+  }
 }
 
 /// Repositorio de medicamentos en memoria usado solo en pruebas, para
@@ -519,6 +563,7 @@ void main() {
         home: HomeScreen(
           repository: _FakeGlucoseRepository(),
           mealRepository: _FakeMealRepository(),
+          reminderRepository: _FakeMealGlucoseReminderRepository(),
         ),
       ),
     );
@@ -548,6 +593,7 @@ void main() {
           home: HomeScreen(
             repository: _FakeGlucoseRepository(),
             mealRepository: mealRepository,
+            reminderRepository: _FakeMealGlucoseReminderRepository(),
           ),
         ),
       );
@@ -1394,6 +1440,156 @@ void main() {
         'permiso concedido e intenta nuevamente.',
       ),
       findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'Con un recordatorio post-comida vencido, se muestra un diálogo al '
+    'abrir HomeScreen',
+    (WidgetTester tester) async {
+      final reminderRepository = _FakeMealGlucoseReminderRepository();
+      await reminderRepository.addReminders([
+        MealGlucoseReminder(
+          mealId: 1,
+          offsetMinutes: 60,
+          dueAt: DateTime.now().subtract(const Duration(minutes: 5)),
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            reminderRepository: reminderRepository,
+            enableMealReminders: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hora de medir tu glucosa'), findsOneWidget);
+      expect(find.text('Registrar ahora'), findsOneWidget);
+      expect(find.text('Descartar'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Descartar el diálogo del recordatorio lo marca como descartado',
+    (WidgetTester tester) async {
+      final reminderRepository = _FakeMealGlucoseReminderRepository();
+      await reminderRepository.addReminders([
+        MealGlucoseReminder(
+          mealId: 1,
+          offsetMinutes: 60,
+          dueAt: DateTime.now().subtract(const Duration(minutes: 5)),
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            reminderRepository: reminderRepository,
+            enableMealReminders: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Descartar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hora de medir tu glucosa'), findsNothing);
+      expect(
+        reminderRepository._reminders.single.status,
+        MealGlucoseReminderStatus.dismissed,
+      );
+    },
+  );
+
+  testWidgets(
+    'Registrar ahora desde el diálogo navega a GlucoseScreen y resuelve '
+    'el recordatorio',
+    (WidgetTester tester) async {
+      final reminderRepository = _FakeMealGlucoseReminderRepository();
+      await reminderRepository.addReminders([
+        MealGlucoseReminder(
+          mealId: 1,
+          offsetMinutes: 60,
+          dueAt: DateTime.now().subtract(const Duration(minutes: 5)),
+        ),
+      ]);
+      final glucoseRepository = _FakeGlucoseRepository();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: glucoseRepository,
+            reminderRepository: reminderRepository,
+            enableMealReminders: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Registrar ahora'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Registrar glucosa'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Glucosa mg/dL'),
+        '150',
+      );
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(glucoseRepository.stored?.value, 150);
+      expect(
+        glucoseRepository.stored?.comment,
+        'Medición post-comida (+60 min).',
+      );
+      expect(
+        reminderRepository._reminders.single.status,
+        MealGlucoseReminderStatus.resolvedManually,
+      );
+    },
+  );
+
+  testWidgets('Con CGM disponible y una medición cercana, el recordatorio se '
+      'resuelve sin mostrar diálogo', (WidgetTester tester) async {
+    final reminderRepository = _FakeMealGlucoseReminderRepository();
+    final dueAt = DateTime.now().subtract(const Duration(minutes: 5));
+    await reminderRepository.addReminders([
+      MealGlucoseReminder(mealId: 1, offsetMinutes: 60, dueAt: dueAt),
+    ]);
+    final glucoseRepository = _FakeGlucoseRepository();
+    final importRepository = _FakeGlucoseImportRepository(glucoseRepository)
+      ..pending = [
+        GlucoseMeasurement(
+          value: 145,
+          moment: GlucoseMoment.now,
+          measuredAt: dueAt.add(const Duration(minutes: 2)),
+        ),
+      ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          reminderRepository: reminderRepository,
+          importRepository: importRepository,
+          enableMealReminders: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hora de medir tu glucosa'), findsNothing);
+    expect(importRepository.importCallCount, 1);
+    expect(
+      reminderRepository._reminders.single.status,
+      MealGlucoseReminderStatus.resolvedAutomatically,
     );
   });
 }
