@@ -148,6 +148,103 @@ class FirestoreBackupRepository implements BackupRepository {
   }
 
   @override
+  Future<BackupMergeSummary> mergeFromCloud() async {
+    final uid = _requireUid();
+
+    Map<String, Object?> data;
+    try {
+      final snapshot = await _firestore.collection(_collection).doc(uid).get();
+      if (!snapshot.exists || snapshot.data() == null) {
+        throw const BackupException(
+          'Todavía no tienes ningún respaldo guardado en la nube.',
+        );
+      }
+      data = snapshot.data()!;
+    } catch (e) {
+      if (e is BackupException) {
+        rethrow;
+      }
+      throw const BackupException(
+        'No se pudo leer el respaldo desde la nube. Verifica tu '
+        'conexión e intenta nuevamente.',
+      );
+    }
+
+    try {
+      final existingGlucoseUuids = (await _glucoseRepository
+              .getAllMeasurements())
+          .map((m) => m.uuid)
+          .toSet();
+      final existingMealUuids = (await _mealRepository.getAllMeals())
+          .map((m) => m.uuid)
+          .toSet();
+      final existingIntakeUuids = (await _medicationRepository
+              .getAllIntakes())
+          .map((i) => i.uuid)
+          .toSet();
+      final existingBiometricUuids = (await _biometricRepository
+              .getAllMeasurements())
+          .map((m) => m.uuid)
+          .toSet();
+
+      var addedGlucose = 0;
+      for (final raw in (data['glucose'] as List?) ?? const []) {
+        final measurement = _glucoseFromMap(raw as Map<String, Object?>);
+        if (existingGlucoseUuids.contains(measurement.uuid)) {
+          continue;
+        }
+        await _glucoseRepository.addMeasurement(measurement);
+        addedGlucose++;
+      }
+
+      var addedMeals = 0;
+      for (final raw in (data['meals'] as List?) ?? const []) {
+        final meal = _mealFromMap(raw as Map<String, Object?>);
+        if (existingMealUuids.contains(meal.uuid)) {
+          continue;
+        }
+        await _mealRepository.addMeal(meal);
+        addedMeals++;
+      }
+
+      var addedIntakes = 0;
+      for (final raw in (data['medicationIntakes'] as List?) ?? const []) {
+        final intake = _intakeFromMap(raw as Map<String, Object?>);
+        if (existingIntakeUuids.contains(intake.uuid)) {
+          continue;
+        }
+        await _medicationRepository.addIntake(intake);
+        addedIntakes++;
+      }
+
+      var addedBiometrics = 0;
+      for (final raw in (data['biometrics'] as List?) ?? const []) {
+        final measurement = _biometricFromMap(raw as Map<String, Object?>);
+        if (existingBiometricUuids.contains(measurement.uuid)) {
+          continue;
+        }
+        await _biometricRepository.addMeasurement(measurement);
+        addedBiometrics++;
+      }
+
+      return BackupMergeSummary(
+        addedGlucoseMeasurements: addedGlucose,
+        addedMeals: addedMeals,
+        addedMedicationIntakes: addedIntakes,
+        addedBiometricMeasurements: addedBiometrics,
+      );
+    } catch (e) {
+      if (e is BackupException) {
+        rethrow;
+      }
+      throw const BackupException(
+        'No se pudo completar la fusión. Algunos datos locales pueden '
+        'haber quedado incompletos; intenta fusionar de nuevo.',
+      );
+    }
+  }
+
+  @override
   Future<DateTime?> getLastBackupTime() async {
     final uid = _firebaseAuth.currentUser?.uid;
     if (uid == null) {
@@ -164,6 +261,7 @@ class FirestoreBackupRepository implements BackupRepository {
   // ---- Serialización: GlucoseMeasurement ----
 
   Map<String, Object?> _glucoseToMap(GlucoseMeasurement m) => {
+    'uuid': m.uuid,
     'value': m.value,
     'moment': m.moment.name,
     'measuredAt': m.measuredAt.toIso8601String(),
@@ -172,6 +270,7 @@ class FirestoreBackupRepository implements BackupRepository {
 
   GlucoseMeasurement _glucoseFromMap(Map<String, Object?> map) {
     return GlucoseMeasurement(
+      uuid: map['uuid'] as String?,
       value: map['value'] as int,
       moment:
           GlucoseMoment.values.asNameMap()[map['moment'] as String] ??
@@ -184,6 +283,7 @@ class FirestoreBackupRepository implements BackupRepository {
   // ---- Serialización: Meal ----
 
   Map<String, Object?> _mealToMap(Meal m) => {
+    'uuid': m.uuid,
     'type': m.type.name,
     'eatenAt': m.eatenAt.toIso8601String(),
     'comment': m.comment,
@@ -203,6 +303,7 @@ class FirestoreBackupRepository implements BackupRepository {
         )
         .toList();
     return Meal(
+      uuid: map['uuid'] as String?,
       type:
           MealType.values.asNameMap()[map['type'] as String] ?? MealType.other,
       eatenAt: DateTime.parse(map['eatenAt'] as String),
@@ -214,6 +315,7 @@ class FirestoreBackupRepository implements BackupRepository {
   // ---- Serialización: MedicationIntake ----
 
   Map<String, Object?> _intakeToMap(MedicationIntake intake) => {
+    'uuid': intake.uuid,
     'takenAt': intake.takenAt.toIso8601String(),
     'comment': intake.comment,
     'items': intake.items
@@ -251,6 +353,7 @@ class FirestoreBackupRepository implements BackupRepository {
         })
         .toList();
     return MedicationIntake(
+      uuid: map['uuid'] as String?,
       takenAt: DateTime.parse(map['takenAt'] as String),
       comment: map['comment'] as String?,
       items: items,
@@ -260,6 +363,7 @@ class FirestoreBackupRepository implements BackupRepository {
   // ---- Serialización: BiometricMeasurement ----
 
   Map<String, Object?> _biometricToMap(BiometricMeasurement m) => {
+    'uuid': m.uuid,
     'weightKg': m.weightKg,
     'systolicPressure': m.systolicPressure,
     'diastolicPressure': m.diastolicPressure,
@@ -270,6 +374,7 @@ class FirestoreBackupRepository implements BackupRepository {
 
   BiometricMeasurement _biometricFromMap(Map<String, Object?> map) {
     return BiometricMeasurement(
+      uuid: map['uuid'] as String?,
       weightKg: (map['weightKg'] as num).toDouble(),
       systolicPressure: map['systolicPressure'] as int?,
       diastolicPressure: map['diastolicPressure'] as int?,

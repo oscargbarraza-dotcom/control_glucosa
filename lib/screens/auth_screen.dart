@@ -168,6 +168,43 @@ class _AccountViewState extends State<_AccountView> {
     }
   }
 
+  Future<void> _merge() async {
+    final backupRepository = widget.backupRepository;
+    if (backupRepository == null) {
+      return;
+    }
+    setState(() {
+      _isBusy = true;
+      _statusMessage = null;
+    });
+    try {
+      final summary = await backupRepository.mergeFromCloud();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _statusMessage = summary.totalAdded == 0
+            ? 'No había datos nuevos que agregar: ya tenías todo lo del '
+                  'respaldo.'
+            : 'Se agregaron ${summary.totalAdded} registro(s) nuevo(s) '
+                  'desde la nube.';
+      });
+    } on BackupException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _statusMessage = e.message;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBusy = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -230,6 +267,21 @@ class _AccountViewState extends State<_AccountView> {
                 onPressed: _isBusy ? null : _confirmAndRestore,
                 child: const Text('Restaurar desde la nube'),
               ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: _isBusy ? null : _merge,
+                child: const Text('Fusionar desde la nube'),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '"Restaurar" reemplaza todo; "Fusionar" solo agrega lo que '
+              'falte, sin borrar nada de este dispositivo.',
+              style: TextStyle(color: Colors.black54, fontSize: 12),
+              textAlign: TextAlign.center,
             ),
           ],
           const SizedBox(height: 24),

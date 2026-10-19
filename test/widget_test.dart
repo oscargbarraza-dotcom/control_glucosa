@@ -362,7 +362,16 @@ class _FakeBackupRepository implements BackupRepository {
   bool hasBackup = false;
   int backupCallCount = 0;
   int restoreCallCount = 0;
+  int mergeCallCount = 0;
   BackupException? failWith;
+
+  /// Resultado que devolverá la próxima llamada a [mergeFromCloud].
+  BackupMergeSummary mergeResult = const BackupMergeSummary(
+    addedGlucoseMeasurements: 0,
+    addedMeals: 0,
+    addedMedicationIntakes: 0,
+    addedBiometricMeasurements: 0,
+  );
 
   @override
   Future<void> backup() async {
@@ -384,6 +393,20 @@ class _FakeBackupRepository implements BackupRepository {
       );
     }
     restoreCallCount++;
+  }
+
+  @override
+  Future<BackupMergeSummary> mergeFromCloud() async {
+    if (failWith != null) {
+      throw failWith!;
+    }
+    if (!hasBackup) {
+      throw const BackupException(
+        'Todavía no tienes ningún respaldo guardado en la nube.',
+      );
+    }
+    mergeCallCount++;
+    return mergeResult;
   }
 
   @override
@@ -1253,6 +1276,7 @@ void main() {
 
       expect(find.text('Respaldar en la nube'), findsOneWidget);
       expect(find.text('Restaurar desde la nube'), findsOneWidget);
+      expect(find.text('Fusionar desde la nube'), findsOneWidget);
     },
   );
 
@@ -1359,6 +1383,91 @@ void main() {
 
     expect(backupRepository.restoreCallCount, 0);
   });
+
+  testWidgets(
+    'Fusionar desde la nube no pide confirmación y muestra cuántos '
+    'registros nuevos se agregaron',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final backupRepository = _FakeBackupRepository()
+        ..hasBackup = true
+        ..mergeResult = const BackupMergeSummary(
+          addedGlucoseMeasurements: 2,
+          addedMeals: 1,
+          addedMedicationIntakes: 0,
+          addedBiometricMeasurements: 0,
+        );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            authRepository: _FakeAuthRepository(),
+            backupRepository: backupRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Cuenta'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continuar con Google'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Fusionar desde la nube'));
+      await tester.pumpAndSettle();
+
+      // No debe aparecer ningún diálogo de confirmación: a diferencia
+      // de "Restaurar", fusionar nunca borra nada local.
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        find.text('Se agregaron 3 registro(s) nuevo(s) desde la nube.'),
+        findsOneWidget,
+      );
+      expect(backupRepository.mergeCallCount, 1);
+      expect(backupRepository.restoreCallCount, 0);
+    },
+  );
+
+  testWidgets(
+    'Fusionar desde la nube sin datos nuevos muestra el mensaje '
+    'correspondiente',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final backupRepository = _FakeBackupRepository()..hasBackup = true;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            authRepository: _FakeAuthRepository(),
+            backupRepository: backupRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Cuenta'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continuar con Google'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Fusionar desde la nube'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'No había datos nuevos que agregar: ya tenías todo lo del '
+          'respaldo.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('Un error de respaldo muestra un mensaje legible', (
     WidgetTester tester,

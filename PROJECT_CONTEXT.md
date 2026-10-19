@@ -1722,18 +1722,81 @@ Prioridad futura:
     permiso solicitado al abrir la app, reconciliación al iniciar
     (`rescheduleAllPending`) y revisión al tocar una notificación. Ver
     Historial de cambios.
-18. 🔶 Sincronización automática/en tiempo real entre dispositivos —
-    primer paso (identificador estable `uuid` en los 4 modelos de
-    datos de salud, migración de esquema `_schemaVersion = 8`). Ver
+18. 🔶 Sincronización automática/en tiempo real entre dispositivos.
+    Hecho hasta ahora: identificador estable `uuid` en los 4 modelos
+    de datos de salud (migración `_schemaVersion = 8`) y fusión
+    manual (`BackupRepository.mergeFromCloud()`, botón "Fusionar
+    desde la nube" en `AuthScreen`, agrega por `uuid` sin reemplazar
+    nada local, a diferencia de `restore()` que sigue intacto). Ver
     Historial de cambios. Pendiente para una iteración futura: decidir
-    si realmente se necesita sincronización (más allá del
-    respaldo/restauración manual ya existente) y, si es así, cambiar
-    `FirestoreBackupRepository.restore()` para fusionar por `uuid` en
-    lugar de reemplazar todo el historial local.
+    si además se necesita que la sincronización ocurra
+    automáticamente/en tiempo real (sin que el usuario abra la
+    pantalla de Cuenta y presione un botón).
 
 ---
 
 # Historial de cambios
+
+## 2026-10-19 (3) — Fusión manual desde la nube por uuid (BackupRepository.mergeFromCloud)
+
+* Segundo paso del roadmap punto 3, sobre la base de la entrada
+  anterior (UUID estable). Decisión de diseño clave: **no** se
+  modificó `restore()` (sigue reemplazando todo el historial local,
+  igual que antes, con su mismo diálogo de confirmación
+  "irreversible"); en vez de eso se agregó una acción nueva y
+  separada, puramente aditiva, para no cambiar en silencio el
+  comportamiento de un botón ya en producción que algunos usuarios
+  pueden depender de que sea destructivo (p. ej. para limpiar datos
+  corruptos/duplicados locales).
+* `lib/services/backup_repository.dart`: nueva clase
+  `BackupMergeSummary` (inmutable; `addedGlucoseMeasurements`,
+  `addedMeals`, `addedMedicationIntakes`, `addedBiometricMeasurements`,
+  y el getter `totalAdded`) y nuevo método abstracto
+  `Future<BackupMergeSummary> mergeFromCloud()` en `BackupRepository`.
+* `lib/services/firestore_backup_repository.dart`:
+  * Las 4 funciones `_xToMap`/`_xFromMap` (glucose, meal, intake,
+    biometric) ahora serializan/deserializan también `uuid`.
+    `_xFromMap` pasa `uuid: map['uuid'] as String?`: si el campo no
+    existe (respaldo creado antes de este cambio), el modelo genera
+    uno nuevo automáticamente (mismo comportamiento ya descrito en la
+    entrada anterior).
+  * `mergeFromCloud()` (nuevo): lee el documento de respaldo (mismo
+    manejo de errores que `restore()`), carga el `uuid` de todo lo
+    que ya existe localmente en las 4 categorías (`Set<String>` por
+    categoría), y recorre cada lista del respaldo agregando
+    (`addMeasurement`/`addMeal`/`addIntake`) solo los elementos cuyo
+    `uuid` no esté ya en el set correspondiente. Nunca llama a
+    `clearMeasurements`/`clearMeals`/`clearIntakes`. Como la app no
+    permite editar un registro ya guardado, un `uuid` ya existente
+    nunca se actualiza: se omite sin más (se asume que la copia local
+    es la vigente).
+  * **Limitación conocida**: un respaldo subido con `backup()` antes
+    de esta entrada no tiene `uuid` guardado en Firestore. Al
+    fusionar ese respaldo, cada elemento genera un `uuid` aleatorio
+    nuevo que nunca coincidirá con ningún `uuid` local, por lo que se
+    re-agregaría como si fuera nuevo (duplicando lo que ya existía).
+    No se intentó resolver esto automáticamente (no hay forma
+    confiable de emparejar registros antiguos sin una clave común);
+    el mitigante práctico es volver a ejecutar `backup()` una vez
+    actualizada la app, antes de usar `mergeFromCloud()` por primera
+    vez.
+* `lib/screens/auth_screen.dart`: `_AccountViewState` gana el método
+  `_merge()` (mismo patrón que `_backup()`: fija `_isBusy`, llama al
+  repositorio, actualiza `_statusMessage` con el total agregado o
+  "no había datos nuevos", maneja `BackupException`). A diferencia de
+  `_confirmAndRestore()`, `_merge()` no pide confirmación (no hay nada
+  que confirmar: nunca borra). Nuevo botón "Fusionar desde la nube"
+  (`OutlinedButton`, debajo de "Restaurar desde la nube") y un texto
+  explicativo corto aclarando la diferencia entre ambos botones.
+* `test/widget_test.dart`: `_FakeBackupRepository` implementa
+  `mergeFromCloud()` (cuenta llamadas en `mergeCallCount`, devuelve
+  `mergeResult` configurable, respeta `failWith`/`hasBackup` igual que
+  `restore()`). Dos pruebas nuevas: fusionar con un `BackupMergeSummary`
+  que tiene conteos > 0 muestra el mensaje con el total y confirma que
+  no aparece ningún `AlertDialog` (a diferencia de restaurar); fusionar
+  con todo en cero muestra el mensaje de "no había datos nuevos".
+* No se tocaron los tests de `restore()` existentes (siguen pasando
+  sin cambios): el contrato de esa operación no cambió.
 
 ## 2026-10-19 (2) — Identificador estable (UUID) en los modelos de datos de salud
 

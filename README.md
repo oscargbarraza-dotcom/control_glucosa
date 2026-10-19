@@ -98,25 +98,33 @@ Medicamentos, Biometría, Historial) sigue funcionando sin iniciar
 sesión, ya que SQLite es el almacenamiento principal.
 
 Con una sesión iniciada, la pantalla de **Cuenta** también permite
-**respaldar y restaurar manualmente** todo el historial (glucosa,
-comidas, medicamentos, biometría) en Cloud Firestore. No es
-sincronización automática: el usuario decide cuándo respaldar, y
-"Restaurar" **reemplaza** los datos locales actuales (con un diálogo
-de confirmación explícito, ya que la acción no se puede deshacer).
+**respaldar** todo el historial (glucosa, comidas, medicamentos,
+biometría) en Cloud Firestore, y traerlo de vuelta de dos formas
+distintas:
+
+- **Restaurar desde la nube**: **reemplaza** todos los datos locales
+  actuales por la última copia guardada (con un diálogo de
+  confirmación explícito, ya que la acción no se puede deshacer).
+- **Fusionar desde la nube**: **agrega** los registros de la nube que
+  todavía no existan en este dispositivo (identificados por su `uuid`
+  estable), sin tocar ni borrar nada de lo que ya hay localmente. No
+  pide confirmación porque nunca es destructiva; pensada para traer a
+  este dispositivo lo registrado en otro, sin perder nada.
+
+Ninguna de las dos es sincronización automática: el usuario decide
+cuándo respaldar y cuál de las dos formas de traer datos usar.
 
 Cada registro de glucosa, comida, toma de medicamentos y medición
 biométrica tiene, además de su `id` autoincremental de SQLite, un
 identificador estable (**UUID v4**) independiente del almacenamiento
-local. No se usa todavía (`backup`/`restore` siguen funcionando igual
-que antes), pero es la pieza base para una futura sincronización o
-fusión entre dispositivos sin duplicados.
+local, que es justamente la clave que usa "Fusionar desde la nube"
+para decidir qué registros ya existen y evitar duplicados.
 
 ## Funcionalidades pendientes
 
 - Sincronización automática/en tiempo real entre dispositivos (la
-  versión actual es manual: respaldar/restaurar bajo demanda). Ya
-  existe la clave estable (UUID) que esto requeriría; falta decidir
-  si se necesita y, si es así, el diseño de la fusión.
+  versión actual sigue siendo manual: respaldar, y luego elegir
+  restaurar o fusionar bajo demanda).
 
 **Historial**, **Comida**, **Medicamentos**, **Biometría** (con perfil de
 usuario e IMC) e **importación manual desde sensores/CGM** ya están
@@ -385,11 +393,11 @@ Nota sobre pruebas:
    APK, pero no todas las rutas interactivas del sistema operativo.
 3. Evaluar si se necesita sincronización automática/en tiempo real
    (más allá del respaldo/restauración manual ya implementado). Ya se
-   agregó la clave estable que esto requeriría (`uuid`, ver más
-   abajo); falta decidir si se necesita y, si es así, diseñar la
-   fusión (`restore()` de `FirestoreBackupRepository` sigue
-   reemplazando todo el historial local en vez de fusionar por
-   `uuid`).
+   agregó la clave estable (`uuid`) y la fusión manual
+   ("Fusionar desde la nube", ver más abajo); queda pendiente decidir
+   si además se necesita que ocurra automáticamente/en tiempo real,
+   sin que el usuario tenga que abrir la pantalla de Cuenta y
+   presionar un botón.
 4. Verificar en una Mac con Xcode que
    `ios/Runner/GoogleService-Info.plist` (generado vía
    `firebase apps:sdkconfig` y enlazado manualmente al proyecto Xcode,

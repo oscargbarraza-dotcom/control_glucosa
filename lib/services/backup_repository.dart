@@ -10,6 +10,31 @@ class BackupException implements Exception {
   String toString() => message;
 }
 
+/// Resultado de [BackupRepository.mergeFromCloud]: cuántos registros
+/// nuevos se agregaron localmente en cada categoría, al traer el
+/// respaldo de la nube sin reemplazar nada ya existente.
+class BackupMergeSummary {
+  const BackupMergeSummary({
+    required this.addedGlucoseMeasurements,
+    required this.addedMeals,
+    required this.addedMedicationIntakes,
+    required this.addedBiometricMeasurements,
+  });
+
+  final int addedGlucoseMeasurements;
+  final int addedMeals;
+  final int addedMedicationIntakes;
+  final int addedBiometricMeasurements;
+
+  /// Total de registros nuevos agregados, sumando las cuatro
+  /// categorías.
+  int get totalAdded =>
+      addedGlucoseMeasurements +
+      addedMeals +
+      addedMedicationIntakes +
+      addedBiometricMeasurements;
+}
+
 /// Contrato para el respaldo y restauración manual en la nube de todos
 /// los datos de salud (glucosa, comidas, medicamentos, biometría).
 ///
@@ -45,4 +70,20 @@ abstract class BackupRepository {
   /// usuario autenticado, o `null` si nunca se ha respaldado (o si no
   /// hay sesión iniciada).
   Future<DateTime?> getLastBackupTime();
+
+  /// Agrega localmente los registros del respaldo en la nube que todavía
+  /// no existan en este dispositivo (identificados por su `uuid`
+  /// estable), **sin tocar ni eliminar** ningún registro local ya
+  /// existente.
+  ///
+  /// A diferencia de [restore] (que reemplaza todo el historial local),
+  /// esta operación es puramente aditiva: pensada para traer al
+  /// dispositivo actual los registros creados en otro dispositivo, sin
+  /// perder lo que ya se registró aquí. Como la app no admite editar un
+  /// registro ya guardado, un `uuid` que ya existe localmente nunca se
+  /// actualiza: se asume que el registro local es el vigente.
+  ///
+  /// Lanza [BackupException] si el usuario no tiene sesión iniciada, si
+  /// no existe ningún respaldo guardado, o si falla la operación.
+  Future<BackupMergeSummary> mergeFromCloud();
 }
