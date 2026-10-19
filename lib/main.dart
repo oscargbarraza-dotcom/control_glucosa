@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 import 'screens/home_screen.dart';
 import 'services/android_notification_service.dart';
+import 'services/darwin_notification_service.dart';
 import 'services/firebase_auth_repository.dart';
 import 'services/notification_service.dart';
 
@@ -30,9 +33,29 @@ Future<void> main() async {
   runApp(
     SeguimientoGlucosaApp(
       authRepository: authRepository,
-      notificationService: AndroidNotificationService(),
+      notificationService: _createNotificationService(),
     ),
   );
+}
+
+/// Elige la implementación de [NotificationService] correspondiente a
+/// la plataforma en ejecución (roadmap punto 17, Fase B).
+///
+/// `flutter_local_notifications` es la misma dependencia en ambos
+/// casos; lo que cambia es la API nativa que envuelve cada
+/// implementación (`AndroidNotificationService` vs
+/// `DarwinNotificationService`, esta última también válida para
+/// macOS). En cualquier otra plataforma (web, desktop no soportado)
+/// devuelve `null`: la app sigue funcionando solo con el diálogo
+/// in-app de la Fase A.
+NotificationService? _createNotificationService() {
+  if (Platform.isAndroid) {
+    return AndroidNotificationService();
+  }
+  if (Platform.isIOS) {
+    return DarwinNotificationService();
+  }
+  return null;
 }
 
 /// Punto de entrada de la aplicación Seguimiento Glucosa.

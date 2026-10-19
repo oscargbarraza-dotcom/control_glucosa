@@ -511,20 +511,19 @@ Parcialmente implementado.
 * Recordatorios de medición post-comida (60 y 90 minutos tras guardar
   una comida): **Fase A hecha** — lógica, persistencia y diálogo
   in-app (`MealGlucoseReminder`/`MealGlucoseReminderRepository`/
-  `MealGlucoseReminderCoordinator`). **Fase B hecha para Android** —
-  notificaciones push locales reales del sistema
-  (`NotificationService`/`AndroidNotificationService`, vía
-  `flutter_local_notifications`), que avisan aunque la app esté
-  cerrada o en background, con permiso solicitado al abrir la app,
-  reconciliación (`rescheduleAllPending`) y revisión al tocar una
-  notificación. Ver roadmap punto 17 y la entrada correspondiente en
-  Historial de cambios.
+  `MealGlucoseReminderCoordinator`). **Fase B hecha para Android e
+  iOS** — notificaciones push locales reales del sistema
+  (`NotificationService`/`AndroidNotificationService`/
+  `DarwinNotificationService`, vía `flutter_local_notifications`),
+  que avisan aunque la app esté cerrada o en background, con permiso
+  solicitado al abrir la app, reconciliación
+  (`rescheduleAllPending`) y revisión al tocar una notificación.
+  `main.dart` elige la implementación según `Platform.isAndroid`/
+  `Platform.isIOS`. Ver roadmap punto 17 y la entrada correspondiente
+  en Historial de cambios.
 
 Pendiente:
 
-* Fase B en iOS: por ahora solo Android tiene notificaciones push
-  reales; en iOS sigue funcionando únicamente el diálogo in-app de la
-  Fase A.
 * Alertas por valores altos/bajos de glucosa.
 
 ---
@@ -781,9 +780,9 @@ El modelo conceptual inicial considerado fue:
   `biometric_measurements`: peso corporal obligatorio, presión arterial
   y frecuencia cardíaca opcionales; IMC queda pendiente).
 * RECORDATORIO_MEDICION — ✅ implementada, Fase A (tabla
-  `meal_glucose_reminders`) y Fase B para Android (notificaciones
-  push locales reales vía `flutter_local_notifications`); Fase B en
-  iOS queda pendiente.
+  `meal_glucose_reminders`) y Fase B para Android e iOS
+  (notificaciones push locales reales vía
+  `flutter_local_notifications`).
 * CONTROL — pendiente.
 
 ---
@@ -1005,13 +1004,11 @@ arriba).
 ## Alertas
 
 Parcialmente implementado: recordatorios de medición post-comida
-(Fase A + Fase B para Android, ver sección "Alertas" bajo "Pantallas
-creadas" y roadmap punto 17).
+(Fase A + Fase B para Android e iOS, ver sección "Alertas" bajo
+"Pantallas creadas" y roadmap punto 17).
 
 Ideas futuras:
 
-* Fase B de recordatorios en iOS (notificaciones push reales; ya
-  implementado para Android).
 * Alertas por valores altos/bajos de glucosa.
 
 ---
@@ -1119,6 +1116,10 @@ Actualmente:
 * Inicializa MaterialApp.
 * Carga HomeScreen.
 * Configura tema.
+* `_createNotificationService()` (roadmap punto 17, Fase B): elige
+  `AndroidNotificationService` o `DarwinNotificationService` según
+  `Platform.isAndroid`/`Platform.isIOS` (`null` en cualquier otra
+  plataforma), y la inyecta en `SeguimientoGlucosaApp`/`HomeScreen`.
 
 ---
 
@@ -1158,7 +1159,10 @@ Contiene:
   (`rescheduleAllPending`) y se suscribe a
   `NotificationService.onNotificationTapped` para volver a llamar a
   `_reviewPendingReminders` cuando el usuario toca una notificación.
-  La suscripción se cancela en `dispose`.
+  La suscripción se cancela en `dispose`. `HomeScreen` no conoce la
+  implementación concreta (`AndroidNotificationService` o
+  `DarwinNotificationService`); es `main.dart` quien elige una u otra
+  según `Platform.isAndroid`/`Platform.isIOS`.
 
 ---
 
@@ -1527,6 +1531,39 @@ Contiene:
 
 ---
 
+## lib/services/darwin_notification_service.dart
+
+Función:
+
+Implementación `DarwinNotificationService` de `NotificationService`
+para iOS (y macOS, que comparte la misma API "Darwin" del plugin)
+sobre `flutter_local_notifications`/`timezone`/`flutter_timezone`.
+
+Contiene:
+
+* `initialize()`: igual que `AndroidNotificationService` (zona
+  horaria local vía `flutter_timezone`, callback de tap conectado a
+  `onNotificationTapped`), pero con
+  `DarwinInitializationSettings(requestAlertPermission: false,
+  requestBadgePermission: false, requestSoundPermission: false)`: el
+  permiso no se solicita durante `initialize`, sino explícitamente
+  desde `requestPermission`, para que el prompt del sistema aparezca
+  cuando `HomeScreen` lo pide (al abrir la app con recordatorios
+  activados) y no antes.
+* `requestPermission()`: resuelve
+  `IOSFlutterLocalNotificationsPlugin.requestPermissions(alert: true,
+  badge: true, sound: true)`.
+* `schedule()`: a diferencia de Android, no necesita un *fallback* de
+  precisión: iOS no tiene un permiso equivalente a
+  `SCHEDULE_EXACT_ALARM`, así que un único intento con
+  `DarwinNotificationDetails(interruptionLevel:
+  InterruptionLevel.active)` es suficiente (best-effort: si falla, el
+  diálogo in-app sigue de respaldo). Omite programar si `scheduledAt`
+  ya pasó, igual que Android.
+* `cancel()`: best-effort, nunca lanza.
+
+---
+
 ## lib/services/meal_glucose_reminder_coordinator.dart
 
 Función:
@@ -1661,18 +1698,85 @@ Prioridad futura:
 17. ✅ Recordatorios de medición post-comida — Fase A: lógica,
     persistencia y diálogo in-app (`MealGlucoseReminder`,
     `MealGlucoseReminderRepository`/`SqliteMealGlucoseReminderRepository`,
-    `MealGlucoseReminderCoordinator`). Fase B para Android:
+    `MealGlucoseReminderCoordinator`). Fase B para Android e iOS:
     notificaciones push locales reales del sistema
-    (`NotificationService`/`AndroidNotificationService`, vía
+    (`NotificationService`/`AndroidNotificationService`/
+    `DarwinNotificationService`, vía
     `flutter_local_notifications`/`timezone`/`flutter_timezone`), con
     permiso solicitado al abrir la app, reconciliación al iniciar
     (`rescheduleAllPending`) y revisión al tocar una notificación. Ver
-    Historial de cambios. Fase B en iOS queda pendiente para una
-    iteración futura.
+    Historial de cambios.
 
 ---
 
 # Historial de cambios
+
+## 2026-10-19 — Recordatorios de medición post-comida, Fase B para iOS (notificaciones push locales)
+
+* Extiende la Fase B (ver entrada del 2026-08-23) a iOS, siguiendo el
+  mismo patrón que `AndroidNotificationService`: `main.dart` elige la
+  implementación de `NotificationService` según la plataforma, en vez
+  de instanciar siempre `AndroidNotificationService`.
+* `lib/services/darwin_notification_service.dart` (nuevo):
+  `DarwinNotificationService`, implementación de `NotificationService`
+  para iOS/macOS sobre `flutter_local_notifications`/`timezone`/
+  `flutter_timezone`. `initialize()` fija la zona horaria local del
+  dispositivo (igual que Android) e inicializa el plugin con
+  `DarwinInitializationSettings(requestAlertPermission: false,
+  requestBadgePermission: false, requestSoundPermission: false)`, para
+  no pedir el permiso automáticamente durante la inicialización;
+  `requestPermission()` lo solicita explícitamente vía
+  `IOSFlutterLocalNotificationsPlugin.requestPermissions(alert: true,
+  badge: true, sound: true)`. A diferencia de Android, `schedule()` no
+  necesita un *fallback* de precisión (iOS no tiene un permiso
+  equivalente a `SCHEDULE_EXACT_ALARM`): un único intento con
+  `DarwinNotificationDetails(interruptionLevel:
+  InterruptionLevel.active)` es suficiente, y sigue siendo
+  best-effort (nunca lanza) y omite programar si `scheduledAt` ya
+  pasó. `cancel()` es best-effort, igual que en Android.
+* `lib/main.dart`: nueva función privada `_createNotificationService()`
+  que devuelve `AndroidNotificationService()` si `Platform.isAndroid`,
+  `DarwinNotificationService()` si `Platform.isIOS`, o `null` en
+  cualquier otra plataforma (web/desktop no soportados); `main()` la
+  usa en vez de instanciar `AndroidNotificationService()` directamente.
+  Requiere el nuevo import `dart:io` para `Platform`.
+* `ios/Runner/AppDelegate.swift`: agrega `import
+  flutter_local_notifications`; registra
+  `UNUserNotificationCenter.current().delegate` en
+  `application(_:didFinishLaunchingWithOptions:)` (requerido para que
+  el plugin pueda recibir el toque de una notificación) y
+  `FlutterLocalNotificationsPlugin.setPluginRegistrantCallback` en
+  `didInitializeImplicitFlutterEngine` (requerido para que el callback
+  de tap tenga acceso al registro de plugins también en el isolate de
+  background), siguiendo el mismo patrón que la app de ejemplo oficial
+  del plugin.
+* No fue necesario modificar `ios/Runner/Info.plist`: a diferencia de
+  Android (que requiere declarar receivers/permisos en el Manifest),
+  `flutter_local_notifications` en iOS no necesita ninguna clave
+  adicional en `Info.plist` para notificaciones locales (sí la
+  requeriría para *remote push*, que no es el caso aquí).
+* `lib/screens/home_screen.dart`: solo se actualizó el comentario de
+  documentación de `notificationService` (ya mencionaba
+  `AndroidNotificationService`; ahora menciona también
+  `DarwinNotificationService`). No hubo cambios de lógica: `HomeScreen`
+  ya dependía únicamente de la interfaz `NotificationService`, nunca
+  de una implementación concreta.
+* No se agregaron pruebas nuevas: las existentes en
+  `test/services/meal_glucose_reminder_coordinator_test.dart` y
+  `test/widget_test.dart` (grupo `NotificationService (Fase B)`) ya
+  prueban `MealGlucoseReminderCoordinator`/`HomeScreen` contra la
+  interfaz `NotificationService` con un fake en memoria, por lo que
+  cubren por igual cualquier implementación concreta que la respete.
+  `DarwinNotificationService` (igual que `AndroidNotificationService`)
+  no tiene pruebas unitarias propias, ya que envuelve directamente el
+  plugin nativo `flutter_local_notifications` y requeriría un entorno
+  iOS/macOS real para probarse de forma significativa. Total: 99 tests
+  (sin cambios), todos pasando.
+* Validación: `flutter analyze` (sin issues) y `flutter test` (99/99).
+  **No fue posible validar la compilación nativa para iOS**
+  (`flutter build ios`/abrir el proyecto en Xcode) desde este entorno
+  Windows, al no contar con una Mac disponible; ver punto 1 de
+  "Próximos pasos recomendados" en `README.md`.
 
 ## 2026-08-23 — Recordatorios de medición post-comida, Fase B para Android (notificaciones push locales)
 

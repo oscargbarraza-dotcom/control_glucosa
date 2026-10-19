@@ -130,7 +130,8 @@ class HomeScreen extends StatefulWidget {
   /// recordatorios siguen funcionando solo in-app (diálogo al abrir la
   /// app), sin ningún aviso del sistema operativo; es el valor usado
   /// por defecto en los widget tests. `main.dart` inyecta
-  /// [AndroidNotificationService] en dispositivos reales.
+  /// `AndroidNotificationService` o `DarwinNotificationService` según
+  /// la plataforma en dispositivos reales.
   final NotificationService? notificationService;
 
   @override

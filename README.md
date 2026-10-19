@@ -80,11 +80,11 @@ Además, al guardar una comida se generan automáticamente dos
 vencer, se intentan resolver solos si hay una medición del
 sensor/CGM cercana en el tiempo; si no, se muestra un diálogo al abrir
 la app (registrar ahora o descartar) (Fase A, lógica in-app). Además,
-en Android, cada recordatorio programa una **notificación push local**
-(`flutter_local_notifications`) que avisa aunque la app esté cerrada o
-en background; se solicita el permiso de notificaciones al abrir la
-app y, al tocar una notificación, se vuelve a revisar los
-recordatorios pendientes (Fase B).
+tanto en Android como en iOS, cada recordatorio programa una
+**notificación push local** (`flutter_local_notifications`) que avisa
+aunque la app esté cerrada o en background; se solicita el permiso de
+notificaciones al abrir la app y, al tocar una notificación, se vuelve
+a revisar los recordatorios pendientes (Fase B).
 
 Se integró **Firebase** (proyecto `seguimiento-glucosa`) como base para
 pasos futuros del roadmap (autenticación, sincronización entre
@@ -108,10 +108,6 @@ de confirmación explícito, ya que la acción no se puede deshacer).
 
 - Sincronización automática/en tiempo real entre dispositivos (la
   versión actual es manual: respaldar/restaurar bajo demanda).
-- Notificaciones push locales para los recordatorios de medición
-  post-comida en **iOS** (Fase B solo implementada para Android por
-  ahora, vía `flutter_local_notifications`; en iOS sigue funcionando
-  únicamente el diálogo in-app de la Fase A).
 
 **Historial**, **Comida**, **Medicamentos**, **Biometría** (con perfil de
 usuario e IMC) e **importación manual desde sensores/CGM** ya están
@@ -142,8 +138,8 @@ implementados.
   Google Health Connect (Android) y Apple HealthKit (iOS). Solo lee
   datos ya existentes en la plataforma de salud, nunca escribe en ella.
 - `flutter_local_notifications: ^22.3.2` para las notificaciones push
-  locales de los recordatorios de glucosa post-comida (Fase B,
-  solo Android por ahora).
+  locales de los recordatorios de glucosa post-comida (Fase B, en
+  Android e iOS).
 - `timezone: ^0.11.2` y `flutter_timezone: ^5.1.1` para programar esas
   notificaciones respetando la zona horaria local del dispositivo.
 - `flutter_lints: ^6.0.0` para análisis estático.
@@ -231,6 +227,7 @@ test/
 - `lib/services/meal_glucose_reminder_repository.dart`: interfaz `MealGlucoseReminderRepository` (agregar en lote, listar vencidos con `getPendingDueBy`, listar **todos** los pendientes con `getAllPending`, actualizar estado) y la implementación `SqliteMealGlucoseReminderRepository`.
 - `lib/services/notification_service.dart`: interfaz `NotificationService` (`initialize`, `requestPermission`, `schedule`, `cancel`, `onNotificationTapped`), independiente de plataforma, para las notificaciones push locales de los recordatorios de glucosa post-comida (Fase B).
 - `lib/services/android_notification_service.dart`: implementación `AndroidNotificationService` de `NotificationService` sobre `flutter_local_notifications`/`timezone`/`flutter_timezone`; programa cada notificación con precisión exacta (`AndroidScheduleMode.exactAllowWhileIdle`) y, si el permiso de alarma exacta no está concedido, hace *fallback* automático a precisión inexacta en vez de perder el recordatorio.
+- `lib/services/darwin_notification_service.dart`: implementación `DarwinNotificationService` de `NotificationService` para iOS/macOS sobre `flutter_local_notifications`/`timezone`/`flutter_timezone`; solicita el permiso (`alert`/`badge`/`sound`) desde `requestPermission` en vez de durante `initialize`, y no necesita el *fallback* de precisión que sí requiere Android, ya que iOS no tiene un permiso equivalente a `SCHEDULE_EXACT_ALARM`.
 - `lib/services/meal_glucose_reminder_coordinator.dart`: `MealGlucoseReminderCoordinator`, lógica pura de aplicación que genera los dos recordatorios por comida (programando su notificación push si hay un `NotificationService` configurado — Fase B), revisa los vencidos intentando auto-resolución vía CGM, expone `dismiss`/`resolveManually` para la acción del usuario (cancelando la notificación correspondiente) y `rescheduleAllPending` como red de seguridad al iniciar la app.
 - `lib/services/medication_repository.dart`: interfaz `MedicationRepository` (listado, agregar, limpiar tomas; listar catálogo de medicamentos) y la implementación `SqliteMedicationRepository`.
 - `lib/services/biometric_repository.dart`: interfaz `BiometricRepository` (última medición, listado, agregar, limpiar) y la implementación `SqliteBiometricRepository`.
@@ -339,17 +336,30 @@ Nota sobre pruebas:
   (Fase B)`, un `_FakeNotificationService` para verificar que
   `HomeScreen` solicita el permiso de notificaciones y reprograma los
   recordatorios pendientes al abrir, y que tocar una notificación
-  dispara una nueva revisión de recordatorios.
+  dispara una nueva revisión de recordatorios. Estas pruebas cubren
+  `MealGlucoseReminderCoordinator`/`HomeScreen` contra la interfaz
+  `NotificationService`, por lo que validan por igual el uso de
+  `AndroidNotificationService` y `DarwinNotificationService`: ninguna
+  de las dos implementaciones concretas tiene pruebas unitarias propias
+  (requerirían un entorno Android/iOS real para el plugin nativo
+  `flutter_local_notifications`), ver punto 1 de "Próximos pasos".
 - `test/models/user_profile_test.dart` prueba `UserProfile.bmiFor` y
   `bmiCategoryFor` como funciones puras, sin dependencias de
   plataforma.
 
 ## Próximos pasos recomendados
 
-1. Extender la Fase B de los recordatorios de medición post-comida
-   (notificaciones push locales) a iOS: por ahora solo está
-   implementada para Android (`AndroidNotificationService`); en iOS
-   sigue funcionando únicamente el diálogo in-app de la Fase A.
+1. Validar en una Mac con Xcode el flujo completo de notificaciones en
+   iOS (`DarwinNotificationService`): concesión/denegación del permiso
+   de notificaciones, entrega con la app cerrada o en background,
+   comportamiento al reiniciar el dispositivo y toque de la
+   notificación. La validación actual en este entorno Windows solo
+   cubrió `flutter analyze` y `flutter test` (no requieren compilar
+   para iOS); no fue posible ejecutar `flutter build ios` ni abrir el
+   proyecto en Xcode para confirmar que `ios/Runner/AppDelegate.swift`
+   (registro de `UNUserNotificationCenterDelegate` y
+   `FlutterLocalNotificationsPlugin.setPluginRegistrantCallback`)
+   compila sin errores.
 2. Validar en un dispositivo/emulador Android real el flujo completo
    de notificaciones (concesión/denegación del permiso de alarma
    exacta, entrega con la app cerrada, reinicio del dispositivo y

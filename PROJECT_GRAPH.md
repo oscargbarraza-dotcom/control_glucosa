@@ -3,7 +3,27 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
-> Actualizado el 2026-08-23 tras agregar la **Fase B** (solo Android)
+> Actualizado el 2026-10-19 tras extender la **Fase B** a iOS: nueva
+> `DarwinNotificationService` en
+> `lib/services/darwin_notification_service.dart` (implementa
+> `NotificationService`, mismo contrato que `AndroidNotificationService`,
+> sobre `flutter_local_notifications`/`timezone`/`flutter_timezone`).
+> `lib/main.dart` ganó la función privada `_createNotificationService()`
+> que elige `AndroidNotificationService()`/`DarwinNotificationService()`
+> según `Platform.isAndroid`/`Platform.isIOS` (`null` en otra
+> plataforma), en vez de instanciar siempre
+> `AndroidNotificationService()`. `MealGlucoseReminderCoordinator` y
+> `HomeScreen` no cambiaron: ya dependían solo de la interfaz
+> `NotificationService`. Requirió agregar `import
+> flutter_local_notifications` y registrar
+> `UNUserNotificationCenter.current().delegate`/
+> `FlutterLocalNotificationsPlugin.setPluginRegistrantCallback` en
+> `ios/Runner/AppDelegate.swift`; no se necesitó ninguna clave nueva en
+> `ios/Runner/Info.plist` (las notificaciones *locales* no la
+> requieren, a diferencia de *remote push*). No fue posible validar
+> `flutter build ios` desde este entorno Windows (sin Mac disponible).
+>
+> Cambio previo (2026-08-23): se agregó la **Fase B** (solo Android)
 > de los recordatorios de medición post-comida: notificaciones push
 > locales reales (`NotificationService` en
 > `lib/services/notification_service.dart`,
@@ -22,12 +42,10 @@ generado a partir del análisis estático de `lib/` y `test/`.
 > presente y `enableMealReminders` es `true`, solicita el permiso de
 > notificaciones, llama a `rescheduleAllPending()`, y se suscribe a
 > `NotificationService.onNotificationTapped` para volver a revisar los
-> pendientes cuando el usuario toca una notificación. `main.dart`
-> inyecta `AndroidNotificationService()` en producción. Requirió
+> pendientes cuando el usuario toca una notificación. Requirió
 > habilitar `isCoreLibraryDesugaringEnabled`/`multiDexEnabled` en
 > `android/app/build.gradle.kts` y agregar permisos/`<receiver>` en
-> `android/app/src/main/AndroidManifest.xml`. iOS sigue solo con el
-> diálogo in-app de la Fase A.
+> `android/app/src/main/AndroidManifest.xml`.
 >
 > Cambio previo: se agregaron los recordatorios de medición
 > post-comida, **Fase A** (`MealGlucoseReminder`,
@@ -144,17 +162,34 @@ generado a partir del análisis estático de `lib/` y `test/`.
 
 ```text
 lib/main.dart
+ └─ imports: dart:io
  └─ imports: package:firebase_core/firebase_core.dart
  └─ imports: package:flutter/material.dart
  └─ imports: lib/firebase_options.dart
  │    └─ imports: package:firebase_core/firebase_core.dart
  │    └─ imports: package:flutter/foundation.dart
+ └─ imports: lib/services/android_notification_service.dart
+ │    └─ imports: dart:async
+ │    └─ imports: package:flutter_local_notifications/flutter_local_notifications.dart
+ │    └─ imports: package:flutter_timezone/flutter_timezone.dart
+ │    └─ imports: package:timezone/data/latest_all.dart
+ │    └─ imports: package:timezone/timezone.dart
+ │    └─ imports: lib/services/notification_service.dart
+ └─ imports: lib/services/darwin_notification_service.dart
+ │    └─ imports: dart:async
+ │    └─ imports: package:flutter_local_notifications/flutter_local_notifications.dart
+ │    └─ imports: package:flutter_timezone/flutter_timezone.dart
+ │    └─ imports: package:timezone/data/latest_all.dart
+ │    └─ imports: package:timezone/timezone.dart
+ │    └─ imports: lib/services/notification_service.dart
  └─ imports: lib/services/firebase_auth_repository.dart
  │    └─ imports: package:firebase_auth/firebase_auth.dart
  │    └─ imports: package:google_sign_in/google_sign_in.dart
  │    └─ imports: lib/models/app_user.dart
  │    └─ imports: lib/services/auth_repository.dart
  │         └─ imports: lib/models/app_user.dart
+ └─ imports: lib/services/notification_service.dart
+ │    (sin imports externos: solo tipos propios, interfaz abstracta)
  └─ imports: lib/screens/home_screen.dart
       └─ imports: dart:async
       └─ imports: package:flutter/material.dart
@@ -584,7 +619,9 @@ SeguimientoGlucosaApp (StatelessWidget)      [lib/main.dart]
             enableMealReminders: true,
             notificationService: notificationService)
             # SeguimientoGlucosaApp ahora también recibe
-            # notificationService; main() inyecta AndroidNotificationService()
+            # notificationService; main() usa _createNotificationService(),
+            # que inyecta AndroidNotificationService() o
+            # DarwinNotificationService() según Platform.isAndroid/isIOS
 
 HomeScreen (StatefulWidget)                  [lib/screens/home_screen.dart]
  └─ constructor({repository, mealRepository, medicationRepository,
@@ -899,6 +936,19 @@ AndroidNotificationService (implements NotificationService)  [lib/services/andro
  ├─ requestPermission() → androidPlugin.requestNotificationsPermission()
  ├─ schedule() → zonedSchedule(exactAllowWhileIdle); si falla,
  │     reintenta con inexactAllowWhileIdle; omite si scheduledAt ya pasó
+ └─ cancel(id) → plugin.cancel(id: id)
+
+DarwinNotificationService (implements NotificationService)  [lib/services/darwin_notification_service.dart]
+ ├─ constructor({plugin})    # FlutterLocalNotificationsPlugin inyectable
+ ├─ initialize() → tz.setLocalLocation (vía FlutterTimezone) + plugin.initialize
+ │     con DarwinInitializationSettings(requestAlertPermission: false,
+ │     requestBadgePermission: false, requestSoundPermission: false)
+ │     (conecta onDidReceiveNotificationResponse → _tapController)
+ ├─ requestPermission() → iosPlugin.requestPermissions(alert: true,
+ │     badge: true, sound: true)
+ ├─ schedule() → zonedSchedule() único intento con
+ │     DarwinNotificationDetails(interruptionLevel: active); sin fallback
+ │     de precisión (no aplica en iOS); omite si scheduledAt ya pasó
  └─ cancel(id) → plugin.cancel(id: id)
 
 MealGlucoseReminderCoordinator               [lib/services/meal_glucose_reminder_coordinator.dart]
@@ -1235,7 +1285,8 @@ flowchart LR
 ```text
 seguimiento_glucosa/
 ├── lib/
-│   ├── main.dart            → bootstrap de la app (Firebase.initializeApp, MaterialApp, tema)
+│   ├── main.dart            → bootstrap de la app (Firebase.initializeApp, MaterialApp, tema,
+│   │                           _createNotificationService() según Platform.isAndroid/isIOS)
 │   ├── firebase_options.dart → DefaultFirebaseOptions (generado por flutterfire configure)
 │   ├── models/
 │   │   ├── glucose_measurement.dart → GlucoseMeasurement, GlucoseMoment
@@ -1271,7 +1322,10 @@ seguimiento_glucosa/
 │       ├── backup_repository.dart  → BackupRepository, BackupException
 │       ├── firestore_backup_repository.dart → FirestoreBackupRepository
 │       ├── glucose_import_repository.dart → GlucoseImportRepository, HealthImportException
-│       └── health_glucose_import_repository.dart → HealthGlucoseImportRepository
+│       ├── health_glucose_import_repository.dart → HealthGlucoseImportRepository
+│       ├── notification_service.dart → NotificationService (interfaz, Fase B)
+│       ├── android_notification_service.dart → AndroidNotificationService
+│       └── darwin_notification_service.dart → DarwinNotificationService (iOS/macOS)
 ├── test/
 │   ├── widget_test.dart     → OK (36 tests: navegación, módulos, perfil/IMC,
 │   │                           auth, backup, CGM y recordatorios in-app)
@@ -1292,7 +1346,8 @@ seguimiento_glucosa/
 ├── ios/Runner/GoogleService-Info.plist → config nativa iOS de Firebase (generado vía firebase apps:sdkconfig; enlazado manualmente en project.pbxproj)
 └── pubspec.yaml              → deps: cupertino_icons, sqflite, path, intl, fl_chart,
                                  firebase_core, firebase_auth, google_sign_in, cloud_firestore,
-                                 health (Health Connect/HealthKit, minSdk 26);
+                                 health (Health Connect/HealthKit, minSdk 26),
+                                 flutter_local_notifications, timezone, flutter_timezone (Fase B);
                                  dev: flutter_lints, flutter_test, sqflite_common_ffi
 ```
 
