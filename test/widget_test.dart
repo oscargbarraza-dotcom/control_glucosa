@@ -757,6 +757,91 @@ void main() {
     );
   });
 
+  testWidgets(
+    'Agregar un medicamento con coma decimal en la cantidad lo persiste '
+    '(regresión: el teclado en español usa coma, no punto)',
+    (WidgetTester tester) async {
+      final medicationRepository = _FakeMedicationRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            medicationRepository: medicationRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Medicamentos'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Medicamento'),
+        'Metformina',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Cantidad'),
+        '5,5',
+      );
+      await tester.tap(find.byTooltip('Agregar medicamento'));
+      await tester.pumpAndSettle();
+
+      // El medicamento se agregó a la lista (no quedó bloqueado en
+      // silencio por un `double.tryParse` que no entendía la coma).
+      expect(find.text('Metformina'), findsOneWidget);
+      expect(find.textContaining('5.5'), findsOneWidget);
+
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Toma guardada.'), findsOneWidget);
+      expect(medicationRepository.stored, hasLength(1));
+      expect(medicationRepository.stored.single.items.single.quantity, 5.5);
+    },
+  );
+
+  testWidgets(
+    'Intentar agregar un medicamento con cantidad inválida muestra un '
+    'mensaje claro en vez de fallar en silencio',
+    (WidgetTester tester) async {
+      final medicationRepository = _FakeMedicationRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            medicationRepository: medicationRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Medicamentos'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Medicamento'),
+        'Metformina',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Cantidad'),
+        'abc',
+      );
+      await tester.tap(find.byTooltip('Agregar medicamento'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Ingresa una cantidad numérica válida.'),
+        findsOneWidget,
+      );
+      // El nombre permanece en el campo (no se borra en un error), pero el
+      // medicamento no se agregó a la lista de la toma en construcción.
+      expect(
+        find.text('Todavía no agregaste medicamentos a esta toma.'),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('Tocar Biometría navega a BiometricScreen con sus pestañas', (
     WidgetTester tester,
   ) async {

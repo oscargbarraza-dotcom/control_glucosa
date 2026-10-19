@@ -141,10 +141,21 @@ class _MedicationFormState extends State<_MedicationForm> {
 
   void _addItem() {
     final name = _medicationNameController.text.trim();
-    final quantity = double.tryParse(_quantityController.text.trim());
-    if (name.isEmpty || quantity == null) {
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Indica el nombre del medicamento.')),
+      );
       return;
     }
+
+    final quantity = _parseQuantity(_quantityController.text);
+    if (quantity == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ingresa una cantidad numérica válida.')),
+      );
+      return;
+    }
+
     if (_selectedUnit == DoseUnit.other &&
         _customUnitController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -175,6 +186,21 @@ class _MedicationFormState extends State<_MedicationForm> {
     setState(() {
       _items.removeAt(index);
     });
+  }
+
+  /// Convierte el texto de cantidad a [double], aceptando tanto `.` como
+  /// `,` como separador decimal (el teclado numérico en español suele
+  /// insertar `,`, lo que hacía fallar [double.tryParse] en silencio).
+  double? _parseQuantity(String input) {
+    final normalized = input.trim().replaceAll(',', '.');
+    if (normalized.isEmpty) {
+      return null;
+    }
+    final quantity = double.tryParse(normalized);
+    if (quantity == null || quantity <= 0) {
+      return null;
+    }
+    return quantity;
   }
 
   Future<void> _save() async {
