@@ -107,6 +107,7 @@ class SqliteGlucoseRepository implements GlucoseRepository {
         GlucoseMoment.now;
     return GlucoseMeasurement(
       id: row['id'] as int,
+      uuid: row['uuid'] as String,
       value: row['value'] as int,
       moment: moment,
       measuredAt: DateTime.parse(row['measured_at'] as String),
@@ -116,6 +117,7 @@ class SqliteGlucoseRepository implements GlucoseRepository {
 
   Map<String, Object?> _toRow(GlucoseMeasurement measurement) {
     return {
+      'uuid': measurement.uuid,
       'value': measurement.value,
       'moment': measurement.moment.name,
       'measured_at': measurement.measuredAt.toIso8601String(),

@@ -175,6 +175,52 @@ void main() {
     },
   );
 
+  test(
+    'addIntake genera un uuid distinto por cada toma cuando no se '
+    'provee uno, y persiste al recargar',
+    () async {
+      final repository = createRepository();
+
+      final first = await repository.addIntake(
+        MedicationIntake(
+          takenAt: DateTime(2026, 1, 1, 8),
+          items: [
+            MedicationIntakeItem(
+              medication: const Medication(
+                name: 'Metformina',
+                defaultUnit: DoseUnit.milligram,
+              ),
+              quantity: 500,
+              unit: DoseUnit.milligram,
+            ),
+          ],
+        ),
+      );
+      final second = await repository.addIntake(
+        MedicationIntake(
+          takenAt: DateTime(2026, 1, 1, 20),
+          items: [
+            MedicationIntakeItem(
+              medication: const Medication(
+                name: 'Insulina',
+                defaultUnit: DoseUnit.unit,
+              ),
+              quantity: 10,
+              unit: DoseUnit.unit,
+            ),
+          ],
+        ),
+      );
+
+      expect(first.uuid, isNotEmpty);
+      expect(second.uuid, isNotEmpty);
+      expect(first.uuid, isNot(second.uuid));
+
+      final all = await repository.getAllIntakes();
+      expect(all.map((i) => i.uuid), containsAll([first.uuid, second.uuid]));
+    },
+  );
+
   test('clearIntakes elimina las tomas pero conserva el catálogo', () async {
     final repository = createRepository();
 

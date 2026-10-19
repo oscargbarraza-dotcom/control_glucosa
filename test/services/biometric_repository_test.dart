@@ -114,6 +114,28 @@ void main() {
     expect(saved.hasBloodPressure, isFalse);
   });
 
+  test(
+    'addMeasurement genera un uuid distinto por cada medición cuando no '
+    'se provee uno, y persiste al recargar',
+    () async {
+      final repository = createRepository();
+
+      final first = await repository.addMeasurement(
+        BiometricMeasurement(weightKg: 70, measuredAt: DateTime(2026, 1, 1)),
+      );
+      final second = await repository.addMeasurement(
+        BiometricMeasurement(weightKg: 71, measuredAt: DateTime(2026, 1, 2)),
+      );
+
+      expect(first.uuid, isNotEmpty);
+      expect(second.uuid, isNotEmpty);
+      expect(first.uuid, isNot(second.uuid));
+
+      final all = await repository.getAllMeasurements();
+      expect(all.map((m) => m.uuid), containsAll([first.uuid, second.uuid]));
+    },
+  );
+
   test('clearMeasurements elimina todo el historial', () async {
     final repository = createRepository();
 

@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 /// Representa una medición biométrica registrada por el usuario.
 ///
 /// El peso corporal (en kg) es obligatorio en todo registro; la presión
@@ -9,21 +11,35 @@
 /// Es inmutable: cualquier cambio debe producir una nueva instancia
 /// mediante [copyWith].
 class BiometricMeasurement {
-  const BiometricMeasurement({
+  /// Si [uuid] no se provee (caso normal al crear una medición nueva en
+  /// el formulario de Biometría), se genera automáticamente un UUID v4.
+  /// Al reconstruir una medición ya persistida (por ejemplo, desde una
+  /// fila de SQLite), debe pasarse explícitamente el [uuid] original
+  /// para preservarlo.
+  BiometricMeasurement({
     this.id,
+    String? uuid,
     required this.weightKg,
     this.systolicPressure,
     this.diastolicPressure,
     this.heartRateBpm,
     required this.measuredAt,
     this.comment,
-  });
+  }) : uuid = uuid ?? const Uuid().v4();
 
   /// Identificador único asignado por el almacenamiento persistente.
   ///
   /// Es `null` para mediciones que aún no se han guardado (por ejemplo, el
   /// resultado recién construido en el formulario antes de persistirlo).
   final int? id;
+
+  /// Identificador estable (UUID v4), independiente del almacenamiento
+  /// local. A diferencia de [id] (autoincremental y propio de cada base
+  /// SQLite), [uuid] no cambia si el registro se respalda o se mueve entre
+  /// dispositivos, lo que lo convierte en la clave candidata para una
+  /// futura sincronización/fusión sin duplicados (ver "Próximos pasos
+  /// recomendados" en `PROJECT_CONTEXT.md`).
+  final String uuid;
 
   /// Peso corporal en kilogramos.
   final double weightKg;
@@ -58,6 +74,7 @@ class BiometricMeasurement {
   /// [clearHeartRateBpm]; de lo contrario el valor actual se conserva.
   BiometricMeasurement copyWith({
     int? id,
+    String? uuid,
     double? weightKg,
     int? systolicPressure,
     bool clearSystolicPressure = false,
@@ -70,6 +87,7 @@ class BiometricMeasurement {
   }) {
     return BiometricMeasurement(
       id: id ?? this.id,
+      uuid: uuid ?? this.uuid,
       weightKg: weightKg ?? this.weightKg,
       systolicPressure: clearSystolicPressure
           ? null
@@ -87,7 +105,7 @@ class BiometricMeasurement {
 
   @override
   String toString() {
-    return 'BiometricMeasurement(id: $id, weightKg: $weightKg, '
+    return 'BiometricMeasurement(id: $id, uuid: $uuid, weightKg: $weightKg, '
         'systolicPressure: $systolicPressure, '
         'diastolicPressure: $diastolicPressure, '
         'heartRateBpm: $heartRateBpm, measuredAt: $measuredAt, '
@@ -101,6 +119,7 @@ class BiometricMeasurement {
     }
     return other is BiometricMeasurement &&
         other.id == id &&
+        other.uuid == uuid &&
         other.weightKg == weightKg &&
         other.systolicPressure == systolicPressure &&
         other.diastolicPressure == diastolicPressure &&
@@ -112,6 +131,7 @@ class BiometricMeasurement {
   @override
   int get hashCode => Object.hash(
     id,
+    uuid,
     weightKg,
     systolicPressure,
     diastolicPressure,

@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 /// Momento del día en el que se realiza una medición de glucosa.
 enum GlucoseMoment {
   now,
@@ -42,19 +44,32 @@ extension GlucoseMomentLabel on GlucoseMoment {
 /// Es inmutable: cualquier cambio debe producir una nueva instancia
 /// mediante [copyWith].
 class GlucoseMeasurement {
-  const GlucoseMeasurement({
+  /// Si [uuid] no se provee (caso normal al crear una medición nueva en
+  /// [GlucoseScreen]), se genera automáticamente un UUID v4. Al reconstruir
+  /// una medición ya persistida (por ejemplo, desde una fila de SQLite),
+  /// debe pasarse explícitamente el [uuid] original para preservarlo.
+  GlucoseMeasurement({
     this.id,
+    String? uuid,
     required this.value,
     required this.moment,
     required this.measuredAt,
     this.comment,
-  });
+  }) : uuid = uuid ?? const Uuid().v4();
 
   /// Identificador único asignado por el almacenamiento persistente.
   ///
   /// Es `null` para mediciones que aún no se han guardado (por ejemplo, el
   /// resultado recién construido en [GlucoseScreen] antes de persistirlo).
   final int? id;
+
+  /// Identificador estable (UUID v4), independiente del almacenamiento
+  /// local. A diferencia de [id] (autoincremental y propio de cada base
+  /// SQLite), [uuid] no cambia si el registro se respalda o se mueve entre
+  /// dispositivos, lo que lo convierte en la clave candidata para una
+  /// futura sincronización/fusión sin duplicados (ver "Próximos pasos
+  /// recomendados" en `PROJECT_CONTEXT.md`).
+  final String uuid;
 
   /// Valor de glucosa en mg/dL.
   final int value;
@@ -71,6 +86,7 @@ class GlucoseMeasurement {
   /// Crea una copia de esta medición sustituyendo los campos indicados.
   GlucoseMeasurement copyWith({
     int? id,
+    String? uuid,
     int? value,
     GlucoseMoment? moment,
     DateTime? measuredAt,
@@ -78,6 +94,7 @@ class GlucoseMeasurement {
   }) {
     return GlucoseMeasurement(
       id: id ?? this.id,
+      uuid: uuid ?? this.uuid,
       value: value ?? this.value,
       moment: moment ?? this.moment,
       measuredAt: measuredAt ?? this.measuredAt,
@@ -87,7 +104,7 @@ class GlucoseMeasurement {
 
   @override
   String toString() {
-    return 'GlucoseMeasurement(id: $id, value: $value, '
+    return 'GlucoseMeasurement(id: $id, uuid: $uuid, value: $value, '
         'moment: ${moment.label}, measuredAt: $measuredAt, '
         'comment: $comment)';
   }
@@ -99,6 +116,7 @@ class GlucoseMeasurement {
     }
     return other is GlucoseMeasurement &&
         other.id == id &&
+        other.uuid == uuid &&
         other.value == value &&
         other.moment == moment &&
         other.measuredAt == measuredAt &&
@@ -106,5 +124,6 @@ class GlucoseMeasurement {
   }
 
   @override
-  int get hashCode => Object.hash(id, value, moment, measuredAt, comment);
+  int get hashCode =>
+      Object.hash(id, uuid, value, moment, measuredAt, comment);
 }

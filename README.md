@@ -104,10 +104,19 @@ sincronización automática: el usuario decide cuándo respaldar, y
 "Restaurar" **reemplaza** los datos locales actuales (con un diálogo
 de confirmación explícito, ya que la acción no se puede deshacer).
 
+Cada registro de glucosa, comida, toma de medicamentos y medición
+biométrica tiene, además de su `id` autoincremental de SQLite, un
+identificador estable (**UUID v4**) independiente del almacenamiento
+local. No se usa todavía (`backup`/`restore` siguen funcionando igual
+que antes), pero es la pieza base para una futura sincronización o
+fusión entre dispositivos sin duplicados.
+
 ## Funcionalidades pendientes
 
 - Sincronización automática/en tiempo real entre dispositivos (la
-  versión actual es manual: respaldar/restaurar bajo demanda).
+  versión actual es manual: respaldar/restaurar bajo demanda). Ya
+  existe la clave estable (UUID) que esto requeriría; falta decidir
+  si se necesita y, si es así, el diseño de la fusión.
 
 **Historial**, **Comida**, **Medicamentos**, **Biometría** (con perfil de
 usuario e IMC) e **importación manual desde sensores/CGM** ya están
@@ -142,6 +151,9 @@ implementados.
   Android e iOS).
 - `timezone: ^0.11.2` y `flutter_timezone: ^5.1.1` para programar esas
   notificaciones respetando la zona horaria local del dispositivo.
+- `uuid: ^4.6.0` para generar el identificador estable (UUID v4) de
+  cada registro de glucosa, comida, toma de medicamentos y medición
+  biométrica, independiente del `id` autoincremental de SQLite.
 - `flutter_lints: ^6.0.0` para análisis estático.
 - `flutter_test` para pruebas de widgets.
 - `sqflite_common_ffi: ^2.4.4` (dev) para probar `SqliteGlucoseRepository`
@@ -325,6 +337,11 @@ Nota sobre pruebas:
   implementaciones `Sqlite*` directamente contra una base de datos
   SQLite real en memoria, usando `sqflite_common_ffi` con
   `singleInstance: false` para aislar cada test.
+- `test/services/app_database_test.dart` prueba específicamente la
+  migración de esquema (versión 7 a 8) que agrega la columna `uuid` a
+  las cuatro tablas de datos de salud, usando un archivo temporal real
+  (no en memoria) para poder cerrar y reabrir la base de datos
+  simulando una instalación existente.
 - `test/services/meal_glucose_reminder_coordinator_test.dart` prueba
   `MealGlucoseReminderCoordinator` (lógica pura de aplicación) con un
   `_FakeReminderRepository` en memoria, sin tocar SQLite, incluyendo un
@@ -367,9 +384,12 @@ Nota sobre pruebas:
    `flutter analyze`, `flutter test` y una compilación exitosa del
    APK, pero no todas las rutas interactivas del sistema operativo.
 3. Evaluar si se necesita sincronización automática/en tiempo real
-   (más allá del respaldo/restauración manual ya implementado), lo
-   que requeriría introducir claves estables (p. ej. UUID) en los
-   modelos de datos para poder fusionar sin duplicados.
+   (más allá del respaldo/restauración manual ya implementado). Ya se
+   agregó la clave estable que esto requeriría (`uuid`, ver más
+   abajo); falta decidir si se necesita y, si es así, diseñar la
+   fusión (`restore()` de `FirestoreBackupRepository` sigue
+   reemplazando todo el historial local en vez de fusionar por
+   `uuid`).
 4. Verificar en una Mac con Xcode que
    `ios/Runner/GoogleService-Info.plist` (generado vía
    `firebase apps:sdkconfig` y enlazado manualmente al proyecto Xcode,

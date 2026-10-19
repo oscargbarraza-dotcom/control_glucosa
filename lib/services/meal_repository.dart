@@ -181,6 +181,7 @@ class SqliteMealRepository implements MealRepository {
         MealType.values.asNameMap()[row['type'] as String] ?? MealType.other;
     return Meal(
       id: row['id'] as int,
+      uuid: row['uuid'] as String,
       type: type,
       eatenAt: DateTime.parse(row['eaten_at'] as String),
       comment: row['comment'] as String?,
@@ -190,6 +191,7 @@ class SqliteMealRepository implements MealRepository {
 
   Map<String, Object?> _mealToRow(Meal meal) {
     return {
+      'uuid': meal.uuid,
       'type': meal.type.name,
       'eaten_at': meal.eatenAt.toIso8601String(),
       'comment': meal.comment,

@@ -225,6 +225,7 @@ class SqliteMedicationRepository implements MedicationRepository {
   ) {
     return MedicationIntake(
       id: row['id'] as int,
+      uuid: row['uuid'] as String,
       takenAt: DateTime.parse(row['taken_at'] as String),
       comment: row['comment'] as String?,
       items: items,
@@ -233,6 +234,7 @@ class SqliteMedicationRepository implements MedicationRepository {
 
   Map<String, Object?> _intakeToRow(MedicationIntake intake) {
     return {
+      'uuid': intake.uuid,
       'taken_at': intake.takenAt.toIso8601String(),
       'comment': intake.comment,
     };

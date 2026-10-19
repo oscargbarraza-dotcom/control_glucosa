@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 import 'food.dart';
 
 /// Tipo de comida registrada.
@@ -61,18 +63,31 @@ class MealFoodItem {
 /// Es inmutable: cualquier cambio debe producir una nueva instancia
 /// mediante [copyWith].
 class Meal {
-  const Meal({
+  /// Si [uuid] no se provee (caso normal al crear una comida nueva en
+  /// `MealScreen`), se genera automáticamente un UUID v4. Al reconstruir
+  /// una comida ya persistida (por ejemplo, desde una fila de SQLite),
+  /// debe pasarse explícitamente el [uuid] original para preservarlo.
+  Meal({
     this.id,
+    String? uuid,
     required this.type,
     required this.eatenAt,
     this.comment,
     this.items = const [],
-  });
+  }) : uuid = uuid ?? const Uuid().v4();
 
   /// Identificador único asignado por el almacenamiento persistente.
   ///
   /// Es `null` para comidas que aún no se han guardado.
   final int? id;
+
+  /// Identificador estable (UUID v4), independiente del almacenamiento
+  /// local. A diferencia de [id] (autoincremental y propio de cada base
+  /// SQLite), [uuid] no cambia si el registro se respalda o se mueve entre
+  /// dispositivos, lo que lo convierte en la clave candidata para una
+  /// futura sincronización/fusión sin duplicados (ver "Próximos pasos
+  /// recomendados" en `PROJECT_CONTEXT.md`).
+  final String uuid;
 
   /// Tipo de comida (desayuno, almuerzo, etc.).
   final MealType type;
@@ -89,6 +104,7 @@ class Meal {
   /// Crea una copia de esta comida sustituyendo los campos indicados.
   Meal copyWith({
     int? id,
+    String? uuid,
     MealType? type,
     DateTime? eatenAt,
     String? comment,
@@ -96,6 +112,7 @@ class Meal {
   }) {
     return Meal(
       id: id ?? this.id,
+      uuid: uuid ?? this.uuid,
       type: type ?? this.type,
       eatenAt: eatenAt ?? this.eatenAt,
       comment: comment ?? this.comment,
@@ -105,8 +122,8 @@ class Meal {
 
   @override
   String toString() {
-    return 'Meal(id: $id, type: ${type.label}, eatenAt: $eatenAt, '
-        'comment: $comment, items: $items)';
+    return 'Meal(id: $id, uuid: $uuid, type: ${type.label}, '
+        'eatenAt: $eatenAt, comment: $comment, items: $items)';
   }
 
   @override
@@ -116,6 +133,7 @@ class Meal {
     }
     return other is Meal &&
         other.id == id &&
+        other.uuid == uuid &&
         other.type == type &&
         other.eatenAt == eatenAt &&
         other.comment == comment &&
@@ -136,5 +154,5 @@ class Meal {
 
   @override
   int get hashCode =>
-      Object.hash(id, type, eatenAt, comment, Object.hashAll(items));
+      Object.hash(id, uuid, type, eatenAt, comment, Object.hashAll(items));
 }

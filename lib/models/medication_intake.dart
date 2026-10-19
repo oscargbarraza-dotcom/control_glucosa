@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 import 'medication.dart';
 
 /// Un medicamento, con su dosis, dentro de una [MedicationIntake].
@@ -72,17 +74,31 @@ class MedicationIntakeItem {
 /// Es inmutable: cualquier cambio debe producir una nueva instancia mediante
 /// [copyWith].
 class MedicationIntake {
-  const MedicationIntake({
+  /// Si [uuid] no se provee (caso normal al crear una toma nueva en
+  /// `MedicationScreen`), se genera automáticamente un UUID v4. Al
+  /// reconstruir una toma ya persistida (por ejemplo, desde una fila de
+  /// SQLite), debe pasarse explícitamente el [uuid] original para
+  /// preservarlo.
+  MedicationIntake({
     this.id,
+    String? uuid,
     required this.takenAt,
     this.comment,
     this.items = const [],
-  });
+  }) : uuid = uuid ?? const Uuid().v4();
 
   /// Identificador único asignado por el almacenamiento persistente.
   ///
   /// Es `null` para tomas que aún no se han guardado.
   final int? id;
+
+  /// Identificador estable (UUID v4), independiente del almacenamiento
+  /// local. A diferencia de [id] (autoincremental y propio de cada base
+  /// SQLite), [uuid] no cambia si el registro se respalda o se mueve entre
+  /// dispositivos, lo que lo convierte en la clave candidata para una
+  /// futura sincronización/fusión sin duplicados (ver "Próximos pasos
+  /// recomendados" en `PROJECT_CONTEXT.md`).
+  final String uuid;
 
   /// Fecha y hora en la que se registró la toma.
   final DateTime takenAt;
@@ -96,12 +112,14 @@ class MedicationIntake {
   /// Crea una copia de esta toma sustituyendo los campos indicados.
   MedicationIntake copyWith({
     int? id,
+    String? uuid,
     DateTime? takenAt,
     String? comment,
     List<MedicationIntakeItem>? items,
   }) {
     return MedicationIntake(
       id: id ?? this.id,
+      uuid: uuid ?? this.uuid,
       takenAt: takenAt ?? this.takenAt,
       comment: comment ?? this.comment,
       items: items ?? this.items,
@@ -110,7 +128,7 @@ class MedicationIntake {
 
   @override
   String toString() {
-    return 'MedicationIntake(id: $id, takenAt: $takenAt, '
+    return 'MedicationIntake(id: $id, uuid: $uuid, takenAt: $takenAt, '
         'comment: $comment, items: $items)';
   }
 
@@ -121,6 +139,7 @@ class MedicationIntake {
     }
     return other is MedicationIntake &&
         other.id == id &&
+        other.uuid == uuid &&
         other.takenAt == takenAt &&
         other.comment == comment &&
         _sameItems(other.items);
@@ -139,5 +158,6 @@ class MedicationIntake {
   }
 
   @override
-  int get hashCode => Object.hash(id, takenAt, comment, Object.hashAll(items));
+  int get hashCode =>
+      Object.hash(id, uuid, takenAt, comment, Object.hashAll(items));
 }

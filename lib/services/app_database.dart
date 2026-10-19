@@ -1,5 +1,6 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 
 /// Gestiona la única conexión SQLite compartida por todos los repositorios
 /// de la app (mediciones de glucosa, comidas, medicamentos, biometría,
@@ -39,7 +40,7 @@ class AppDatabase {
   /// Versión actual del esquema. Cada tabla nueva debe sumar su creación en
   /// [_onCreate] (instalaciones nuevas) y en [_onUpgrade] (instalaciones
   /// existentes), incrementando este número.
-  static const _schemaVersion = 7;
+  static const _schemaVersion = 8;
 
   final DatabaseFactory _databaseFactory;
   final String? _databasePath;
@@ -121,11 +122,48 @@ class AppDatabase {
     if (oldVersion < 7) {
       await db.execute(_createMealGlucoseRemindersTable);
     }
+    if (oldVersion < 8) {
+      await _addUuidColumn(db, 'glucose_measurements');
+      await _addUuidColumn(db, 'meals');
+      await _addUuidColumn(db, 'medication_intakes');
+      await _addUuidColumn(db, 'biometric_measurements');
+    }
+  }
+
+  /// Agrega la columna `uuid` a una tabla de datos de salud ya existente
+  /// (creada en una versión de esquema anterior a la 8, antes de que
+  /// [_createAll] la incluyera desde el inicio) y la rellena para cada
+  /// fila preexistente.
+  ///
+  /// SQLite no permite agregar una columna `NOT NULL UNIQUE` con
+  /// `ALTER TABLE` cuando la tabla ya tiene filas (no hay forma de
+  /// proveer un valor por defecto distinto para cada una), por lo que el
+  /// proceso ocurre en tres pasos: agregar la columna sin restricciones,
+  /// rellenarla fila por fila con un UUID v4 nuevo, y recién entonces
+  /// crear el índice único.
+  Future<void> _addUuidColumn(Database db, String table) async {
+    await db.execute('ALTER TABLE $table ADD COLUMN uuid TEXT');
+
+    const uuidGenerator = Uuid();
+    final rows = await db.query(table, columns: ['id']);
+    for (final row in rows) {
+      await db.update(
+        table,
+        {'uuid': uuidGenerator.v4()},
+        where: 'id = ?',
+        whereArgs: [row['id'] as int],
+      );
+    }
+
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_uuid ON $table (uuid)',
+    );
   }
 
   static const _createGlucoseMeasurementsTable = '''
     CREATE TABLE glucose_measurements (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
       value INTEGER NOT NULL,
       moment TEXT NOT NULL,
       measured_at TEXT NOT NULL,
@@ -143,6 +181,7 @@ class AppDatabase {
   static const _createMealsTable = '''
     CREATE TABLE meals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
       type TEXT NOT NULL,
       eaten_at TEXT NOT NULL,
       comment TEXT
@@ -169,6 +208,7 @@ class AppDatabase {
   static const _createMedicationIntakesTable = '''
     CREATE TABLE medication_intakes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
       taken_at TEXT NOT NULL,
       comment TEXT
     )
@@ -189,6 +229,7 @@ class AppDatabase {
   static const _createBiometricMeasurementsTable = '''
     CREATE TABLE biometric_measurements (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
       weight_kg REAL NOT NULL,
       systolic_pressure INTEGER,
       diastolic_pressure INTEGER,

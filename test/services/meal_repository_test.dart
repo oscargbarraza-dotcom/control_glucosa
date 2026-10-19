@@ -131,6 +131,40 @@ void main() {
     },
   );
 
+  test(
+    'addMeal genera un uuid distinto por cada comida cuando no se '
+    'provee uno, y persiste al recargar',
+    () async {
+      final repository = createRepository();
+
+      final first = await repository.addMeal(
+        Meal(
+          type: MealType.breakfast,
+          eatenAt: DateTime(2026, 1, 1, 8),
+          items: [
+            MealFoodItem(food: const Food(name: 'Pan'), quantity: '1'),
+          ],
+        ),
+      );
+      final second = await repository.addMeal(
+        Meal(
+          type: MealType.lunch,
+          eatenAt: DateTime(2026, 1, 1, 13),
+          items: [
+            MealFoodItem(food: const Food(name: 'Arroz'), quantity: '1'),
+          ],
+        ),
+      );
+
+      expect(first.uuid, isNotEmpty);
+      expect(second.uuid, isNotEmpty);
+      expect(first.uuid, isNot(second.uuid));
+
+      final all = await repository.getAllMeals();
+      expect(all.map((m) => m.uuid), containsAll([first.uuid, second.uuid]));
+    },
+  );
+
   test('clearMeals elimina las comidas pero conserva el catálogo', () async {
     final repository = createRepository();
 

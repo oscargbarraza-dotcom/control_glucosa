@@ -1362,11 +1362,15 @@ Contiene:
   `_schemaVersion = 3` sumó las 3 tablas de medicamentos,
   `_schemaVersion = 4` sumó `biometric_measurements`,
   `_schemaVersion = 5` sumó presión/frecuencia cardíaca opcionales a
-  esa tabla, `_schemaVersion = 6` sumó `user_profile`, y
-  `_schemaVersion = 7` (actual) sumó `meal_glucose_reminders`). Activa
-  `PRAGMA foreign_keys = ON` en `onConfigure` para que `ON DELETE CASCADE`
-  funcione al borrar una comida (incluye sus recordatorios) o una toma
-  de medicamentos.
+  esa tabla, `_schemaVersion = 6` sumó `user_profile`,
+  `_schemaVersion = 7` sumó `meal_glucose_reminders`, y
+  `_schemaVersion = 8` (actual) sumó la columna `uuid TEXT NOT NULL
+  UNIQUE` a `glucose_measurements`, `meals`, `medication_intakes` y
+  `biometric_measurements`, con backfill vía `_addUuidColumn` para las
+  filas preexistentes — ver la entrada correspondiente en "Historial
+  de cambios"). Activa `PRAGMA foreign_keys = ON` en `onConfigure`
+  para que `ON DELETE CASCADE` funcione al borrar una comida (incluye
+  sus recordatorios) o una toma de medicamentos.
 * Centralizar esto evita que cada repositorio administre su propia
   versión de esquema de forma independiente (lo que se desincronizaría
   fácilmente al agregar más tablas).
@@ -1377,10 +1381,18 @@ Contiene:
 
 Función:
 
-Modelo inmutable `GlucoseMeasurement` (id, value, moment, measuredAt,
-comment) y el enum `GlucoseMoment` con su extensión `label` para el texto
-legible de cada momento de medición. El campo `id` es opcional y lo asigna
-el repositorio al persistir la medición.
+Modelo inmutable `GlucoseMeasurement` (id, uuid, value, moment,
+measuredAt, comment) y el enum `GlucoseMoment` con su extensión `label`
+para el texto legible de cada momento de medición. El campo `id` es
+opcional y lo asigna el repositorio al persistir la medición. `uuid` es
+un identificador estable (UUID v4), independiente de `id`: si no se
+provee en el constructor, se genera automáticamente (`const
+Uuid().v4()`); al reconstruir una medición ya persistida (por ejemplo,
+desde una fila de SQLite), el repositorio pasa explícitamente el `uuid`
+original para preservarlo. Por este generado automático, la clase ya
+no es `const`-constructible (antes sí lo era). Ver la entrada
+correspondiente en "Historial de cambios" para el detalle de por qué
+se agregó.
 
 ---
 
@@ -1397,10 +1409,12 @@ consumido por una o más comidas.
 
 Función:
 
-Modelo inmutable `Meal` (id, type, eatenAt, comment, items) y
+Modelo inmutable `Meal` (id, uuid, type, eatenAt, comment, items) y
 `MealFoodItem` (id, food, quantity), más el enum `MealType` (breakfast,
 lunch, snack, dinner, other) con su extensión `label`. Los campos `id`
-son opcionales y los asigna el repositorio al persistir.
+son opcionales y los asigna el repositorio al persistir. `uuid` sigue
+el mismo patrón que en `GlucoseMeasurement` (generado automáticamente
+si no se provee).
 
 ---
 
@@ -1419,12 +1433,14 @@ extensión `label`.
 
 Función:
 
-Modelo inmutable `MedicationIntake` (id, takenAt, comment, items) y
+Modelo inmutable `MedicationIntake` (id, uuid, takenAt, comment, items) y
 `MedicationIntakeItem` (id, medication, quantity, unit,
 customUnitLabel), con el getter `effectiveUnitLabel` (devuelve
 `customUnitLabel` cuando `unit` es `DoseUnit.other` y no está vacío, o
 `unit.label` en cualquier otro caso). Los campos `id` son opcionales y
-los asigna el repositorio al persistir.
+los asigna el repositorio al persistir. `uuid` sigue el mismo patrón
+que en `GlucoseMeasurement` (generado automáticamente si no se
+provee).
 
 ---
 
@@ -1706,10 +1722,76 @@ Prioridad futura:
     permiso solicitado al abrir la app, reconciliación al iniciar
     (`rescheduleAllPending`) y revisión al tocar una notificación. Ver
     Historial de cambios.
+18. 🔶 Sincronización automática/en tiempo real entre dispositivos —
+    primer paso (identificador estable `uuid` en los 4 modelos de
+    datos de salud, migración de esquema `_schemaVersion = 8`). Ver
+    Historial de cambios. Pendiente para una iteración futura: decidir
+    si realmente se necesita sincronización (más allá del
+    respaldo/restauración manual ya existente) y, si es así, cambiar
+    `FirestoreBackupRepository.restore()` para fusionar por `uuid` en
+    lugar de reemplazar todo el historial local.
 
 ---
 
 # Historial de cambios
+
+## 2026-10-19 (2) — Identificador estable (UUID) en los modelos de datos de salud
+
+* Primer paso del roadmap punto 3 ("evaluar si se necesita
+  sincronización automática/en tiempo real"): agrega la clave estable
+  que una futura sincronización/fusión entre dispositivos necesitaría,
+  sin tocar todavía `backup`/`restore` (`FirestoreBackupRepository`
+  sigue reemplazando todo el historial local al restaurar, igual que
+  antes). Alcance acotado deliberadamente a esto; fusionar por `uuid`
+  en `restore()` queda para una iteración futura.
+* `lib/models/glucose_measurement.dart`, `meal.dart`,
+  `medication_intake.dart` y `biometric_measurement.dart`: cada uno
+  gana un campo `uuid` (`String`, no nulo). Si no se provee en el
+  constructor, se genera automáticamente un UUID v4 (`const
+  Uuid().v4()`); al reconstruir un registro ya persistido (en los
+  `_fromRow` de cada repositorio `Sqlite*`), se pasa explícitamente el
+  `uuid` ya guardado para preservarlo. Por este valor por defecto
+  calculado en el constructor, estas 4 clases dejan de ser
+  `const`-constructibles (no había ningún sitio del código que las
+  instanciara con `const`, así que no fue necesario tocar nada más por
+  este cambio). `copyWith`/`==`/`hashCode`/`toString` de las 4 clases
+  se actualizaron para incluir `uuid`.
+* `lib/services/app_database.dart`: `_schemaVersion` 7 → 8. La
+  migración (`oldVersion < 8`) agrega la columna `uuid` a
+  `glucose_measurements`, `meals`, `medication_intakes` y
+  `biometric_measurements` mediante el nuevo método privado
+  `_addUuidColumn`, en tres pasos (SQLite no permite agregar una
+  columna `NOT NULL UNIQUE` con `ALTER TABLE` sobre una tabla con
+  filas existentes): 1) `ALTER TABLE ... ADD COLUMN uuid TEXT` sin
+  restricciones, 2) una pasada rellenando un UUID v4 nuevo fila por
+  fila (`db.update` por `id`), 3) `CREATE UNIQUE INDEX` sobre la
+  columna ya rellena. Las instalaciones nuevas (`_createAll`) crean
+  directamente `uuid TEXT NOT NULL UNIQUE` en las 4 tablas.
+* `lib/services/glucose_repository.dart`, `meal_repository.dart`,
+  `medication_repository.dart` y `biometric_repository.dart`: cada
+  `_fromRow`/`_toRow` (o `_mealFromRow`/`_mealToRow`,
+  `_intakeFromRow`/`_intakeToRow` según el archivo) ahora lee/escribe
+  la columna `uuid`.
+* `pubspec.yaml`: se agregó `uuid: ^4.6.0` (ya era dependencia
+  transitiva de otros paquetes; ahora es dependencia directa).
+* Pruebas nuevas: en cada `test/services/*_repository_test.dart`
+  (glucose, meal, medication, biometric) se agregó un caso que
+  verifica que `uuid` se genera distinto por cada registro nuevo y que
+  persiste al recargar desde SQLite. `test/services/app_database_test.dart`
+  (nuevo archivo) prueba específicamente la migración 7 → 8: que una
+  instalación nueva crea el índice único desde el inicio, y que al
+  migrar una base existente (simulada abriendo un esquema v7 manual
+  sobre un archivo temporal real, no en memoria, para poder cerrar y
+  reabrir con la versión actual) cada fila preexistente recibe un
+  `uuid` propio y distinto, y el índice único rechaza duplicados desde
+  ese momento en adelante.
+* No se tocaron las pantallas (`glucose_screen.dart`,
+  `meal_screen.dart`, `medication_screen.dart`, `biometric_screen.dart`)
+  ni `firestore_backup_repository.dart`: siguen construyendo estos
+  modelos sin pasar `uuid` explícitamente (se genera solo), y el
+  respaldo/restauración en Firestore sigue serializando sin `uuid` (se
+  genera uno nuevo en cada `addMeasurement`/`addMeal`/`addIntake` al
+  restaurar, igual que ya ocurría con `id` antes de este cambio).
 
 ## 2026-10-19 — Recordatorios de medición post-comida, Fase B para iOS (notificaciones push locales)
 

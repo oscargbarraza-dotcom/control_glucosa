@@ -107,6 +107,7 @@ class SqliteBiometricRepository implements BiometricRepository {
   BiometricMeasurement _fromRow(Map<String, Object?> row) {
     return BiometricMeasurement(
       id: row['id'] as int,
+      uuid: row['uuid'] as String,
       weightKg: (row['weight_kg'] as num).toDouble(),
       systolicPressure: row['systolic_pressure'] as int?,
       diastolicPressure: row['diastolic_pressure'] as int?,
@@ -118,6 +119,7 @@ class SqliteBiometricRepository implements BiometricRepository {
 
   Map<String, Object?> _toRow(BiometricMeasurement measurement) {
     return {
+      'uuid': measurement.uuid,
       'weight_kg': measurement.weightKg,
       'systolic_pressure': measurement.systolicPressure,
       'diastolic_pressure': measurement.diastolicPressure,

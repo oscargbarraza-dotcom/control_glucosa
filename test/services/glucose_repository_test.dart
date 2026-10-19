@@ -99,6 +99,48 @@ void main() {
     expect(all.map((m) => m.value).toList(), [130, 115, 90]);
   });
 
+  test(
+    'addMeasurement genera un uuid distinto por cada medición cuando no '
+    'se provee uno',
+    () async {
+      final repository = createRepository();
+
+      final first = await repository.addMeasurement(
+        GlucoseMeasurement(
+          value: 100,
+          moment: GlucoseMoment.now,
+          measuredAt: DateTime(2026, 1, 1),
+        ),
+      );
+      final second = await repository.addMeasurement(
+        GlucoseMeasurement(
+          value: 110,
+          moment: GlucoseMoment.now,
+          measuredAt: DateTime(2026, 1, 2),
+        ),
+      );
+
+      expect(first.uuid, isNotEmpty);
+      expect(second.uuid, isNotEmpty);
+      expect(first.uuid, isNot(second.uuid));
+    },
+  );
+
+  test('el uuid persiste al recargar el historial desde SQLite', () async {
+    final repository = createRepository();
+
+    final saved = await repository.addMeasurement(
+      GlucoseMeasurement(
+        value: 120,
+        moment: GlucoseMoment.afterLunch,
+        measuredAt: DateTime(2026, 1, 1, 14),
+      ),
+    );
+
+    final reloaded = await repository.getLastMeasurement();
+    expect(reloaded?.uuid, saved.uuid);
+  });
+
   test('clearMeasurements elimina todo el historial', () async {
     final repository = createRepository();
 

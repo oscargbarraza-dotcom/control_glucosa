@@ -79,6 +79,12 @@ dependencies:
   timezone: ^0.11.2
   flutter_timezone: ^5.1.1
 
+  # Identificador estable (UUID v4) para cada registro de salud (glucosa,
+  # comidas, tomas de medicamentos, biometría), independiente del `id`
+  # autoincremental de SQLite (roadmap punto 3: base para una futura
+  # sincronización/fusión entre dispositivos sin duplicados).
+  uuid: ^4.6.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
