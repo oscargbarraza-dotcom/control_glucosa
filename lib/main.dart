@@ -4,10 +4,12 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
+import 'screens/cloud_viewer_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/android_notification_service.dart';
 import 'services/darwin_notification_service.dart';
 import 'services/firebase_auth_repository.dart';
+import 'services/firestore_cloud_sync_viewer.dart';
 import 'services/notification_service.dart';
 
 /// Web Client ID del proyecto Firebase `seguimiento-glucosa`, generado
@@ -85,13 +87,34 @@ class SeguimientoGlucosaApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Seguimiento Glucosa',
       theme: ThemeData(primarySwatch: Colors.deepPurple),
-      home: HomeScreen(
-        authRepository: authRepository,
-        enableCloudBackup: true,
-        enableHealthImport: true,
-        enableMealReminders: true,
-        notificationService: notificationService,
-      ),
+      home: _homeForCurrentPlatform(),
+    );
+  }
+
+  /// En Windows y macOS la app es un visor de **solo lectura** del
+  /// historial sincronizado en la nube (ver "Sincronización en tiempo
+  /// real" en `PROJECT_CONTEXT.md`): no hay ningún formulario de
+  /// registro, ni almacenamiento local, en esas plataformas. En
+  /// Android/iOS se mantiene [HomeScreen] completo, con sincronización
+  /// automática habilitada (`enableCloudSync`).
+  ///
+  /// Linux queda fuera de ambos casos (cae en la rama de [HomeScreen])
+  /// porque ni `firebase_auth` ni `cloud_firestore` tienen soporte
+  /// oficial ahí: seguirá funcionando sobre SQLite local, pero sin
+  /// sincronización en la nube.
+  Widget _homeForCurrentPlatform() {
+    if (Platform.isWindows || Platform.isMacOS) {
+      return CloudViewerScreen(
+        authRepository: authRepository ?? FirebaseAuthRepository(),
+        syncViewer: FirestoreCloudSyncViewer(),
+      );
+    }
+    return HomeScreen(
+      authRepository: authRepository,
+      enableCloudSync: true,
+      enableHealthImport: true,
+      enableMealReminders: true,
+      notificationService: notificationService,
     );
   }
 }

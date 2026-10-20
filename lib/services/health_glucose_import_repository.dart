@@ -19,7 +19,7 @@ class HealthGlucoseImportRepository implements GlucoseImportRepository {
   }) : // Se requiere un parámetro con nombre explícito
        // (`glucoseRepository: ...`) para legibilidad en el sitio de
        // construcción, por lo que no se usa un initializing formal
-       // aquí, igual que en `FirestoreBackupRepository`.
+       // aquí, igual que en `FirestoreCloudSyncRepository`.
        // ignore: prefer_initializing_formals
        _glucoseRepository = glucoseRepository,
        _health = health ?? Health();

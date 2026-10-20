@@ -19,7 +19,8 @@ class HealthImportException implements Exception {
 /// incorporarlos al historial local ([GlucoseRepository]). La
 /// importación ocurre bajo pedido explícito del usuario (un botón), no
 /// de forma automática ni en segundo plano, siguiendo el mismo patrón
-/// manual ya usado por `BackupRepository` para el respaldo en la nube.
+/// manual bajo pedido del usuario, distinto de la sincronización
+/// automática en segundo plano de `CloudSyncRepository`.
 ///
 /// Se define como interfaz abstracta para permitir sustituir la
 /// implementación (por ejemplo, en pruebas) sin acoplar las pantallas

@@ -3,14 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/app_user.dart';
 import '../models/glucose_measurement.dart';
 import '../models/meal_glucose_reminder.dart';
 import '../services/app_database.dart';
 import '../services/auth_repository.dart';
-import '../services/backup_repository.dart';
 import '../services/biometric_repository.dart';
+import '../services/cloud_sync_repository.dart';
 import '../services/firebase_auth_repository.dart';
-import '../services/firestore_backup_repository.dart';
+import '../services/firestore_cloud_sync_repository.dart';
 import '../services/glucose_import_repository.dart';
 import '../services/glucose_repository.dart';
 import '../services/health_glucose_import_repository.dart';
@@ -19,6 +20,7 @@ import '../services/meal_glucose_reminder_repository.dart';
 import '../services/meal_repository.dart';
 import '../services/medication_repository.dart';
 import '../services/notification_service.dart';
+import '../services/syncing_repositories.dart';
 import '../services/user_profile_repository.dart';
 import 'auth_screen.dart';
 import 'biometric_screen.dart';
@@ -43,8 +45,8 @@ class HomeScreen extends StatefulWidget {
     this.biometricRepository,
     this.profileRepository,
     this.authRepository,
-    this.backupRepository,
-    this.enableCloudBackup = false,
+    this.syncRepository,
+    this.enableCloudSync = false,
     this.importRepository,
     this.enableHealthImport = false,
     this.reminderRepository,
@@ -84,19 +86,25 @@ class HomeScreen extends StatefulWidget {
   /// prueba en tests de widgets sin depender de Firebase.
   final AuthRepository? authRepository;
 
-  /// Repositorio de respaldo/restauración en la nube. Si es `null`, se
-  /// usa [FirestoreBackupRepository] (construido sobre los mismos
+  /// Repositorio de sincronización automática en la nube
+  /// ("Sincronización en tiempo real"). Si es `null`, se usa
+  /// [FirestoreCloudSyncRepository] (construido sobre los mismos
   /// repositorios de datos de salud que el resto de la pantalla).
-  /// Permite inyectar `null` explícitamente en tests que no necesitan
-  /// probar esta funcionalidad, para que `AuthScreen` no muestre los
-  /// botones de respaldo.
-  final BackupRepository? backupRepository;
+  /// Permite inyectar un fake en tests sin tocar Firestore real.
+  final CloudSyncRepository? syncRepository;
 
-  /// Habilita la construcción automática de [FirestoreBackupRepository]
-  /// cuando [backupRepository] es `null`. Por defecto es `false` para
-  /// no tocar Firestore real en los widget tests; `main.dart` lo activa
+  /// Habilita la construcción automática de
+  /// [FirestoreCloudSyncRepository] cuando [syncRepository] es `null`,
+  /// y con ella: (1) que cada registro nuevo (glucosa, comida,
+  /// medicamento, biometría) se suba solo a la nube al guardarlo en
+  /// SQLite (ver `lib/services/syncing_repositories.dart`), y (2) que
+  /// al detectar una sesión recién iniciada se traigan automáticamente
+  /// los registros de la nube que falten en este dispositivo (ver
+  /// [CloudSyncRepository.pullMissingFromCloud], pensado para migrar
+  /// de un celular viejo a uno nuevo). Por defecto es `false` para no
+  /// tocar Firestore real en los widget tests; `main.dart` lo activa
   /// explícitamente una vez que Firebase ya está inicializado.
-  final bool enableCloudBackup;
+  final bool enableCloudSync;
 
   /// Repositorio de importación manual de glucosa desde sensores/CGM
   /// (Health Connect/Apple Health). Si es `null`, se usa
@@ -150,16 +158,19 @@ class _HomeScreenState extends State<HomeScreen> {
   // lanza una excepción fuera de un entorno Android/iOS real.
   late final AppDatabase _sharedDatabase = AppDatabase();
 
-  late final GlucoseRepository _repository =
+  // Repositorios SQLite "base" (sin sincronización), usados tanto
+  // directamente como fuente para los decoradores `Syncing*Repository`
+  // de más abajo.
+  late final GlucoseRepository _baseGlucoseRepository =
       widget.repository ??
       SqliteGlucoseRepository.withDatabase(_sharedDatabase);
-  late final MealRepository _mealRepository =
+  late final MealRepository _baseMealRepository =
       widget.mealRepository ??
       SqliteMealRepository.withDatabase(_sharedDatabase);
-  late final MedicationRepository _medicationRepository =
+  late final MedicationRepository _baseMedicationRepository =
       widget.medicationRepository ??
       SqliteMedicationRepository.withDatabase(_sharedDatabase);
-  late final BiometricRepository _biometricRepository =
+  late final BiometricRepository _baseBiometricRepository =
       widget.biometricRepository ??
       SqliteBiometricRepository.withDatabase(_sharedDatabase);
   late final UserProfileRepository _profileRepository =
@@ -168,21 +179,65 @@ class _HomeScreenState extends State<HomeScreen> {
   late final AuthRepository _authRepository =
       widget.authRepository ?? FirebaseAuthRepository();
   // No usa `??` porque, a diferencia de los demás repositorios, el valor
-  // por defecto de `BackupRepository` es `null` (no una implementación
-  // real): esta funcionalidad requiere Firebase ya inicializado
-  // (`enableCloudBackup`), y los tests de widgets no deben tocar
-  // Firestore real por defecto.
-  late final BackupRepository? _backupRepository =
-      widget.backupRepository ??
-      (widget.enableCloudBackup
-          ? FirestoreBackupRepository(
-              glucoseRepository: _repository,
-              mealRepository: _mealRepository,
-              medicationRepository: _medicationRepository,
-              biometricRepository: _biometricRepository,
+  // por defecto de `CloudSyncRepository` es `null` (no una
+  // implementación real): esta funcionalidad requiere Firebase ya
+  // inicializado (`enableCloudSync`), y los tests de widgets no deben
+  // tocar Firestore real por defecto.
+  late final CloudSyncRepository? _syncRepository =
+      widget.syncRepository ??
+      (widget.enableCloudSync
+          ? FirestoreCloudSyncRepository(
+              glucoseRepository: _baseGlucoseRepository,
+              mealRepository: _baseMealRepository,
+              medicationRepository: _baseMedicationRepository,
+              biometricRepository: _baseBiometricRepository,
             )
           : null);
-  // No usa `??` por la misma razón que `_backupRepository`: el valor
+
+  // Repositorios que de verdad consumen el resto de esta pantalla y las
+  // que abre: si hay sincronización habilitada, son los repositorios
+  // base envueltos en su decorador `Syncing*Repository` (ver
+  // `lib/services/syncing_repositories.dart`); si no, son los propios
+  // repositorios base, sin ningún cambio de comportamiento.
+  late final GlucoseRepository _repository = _makeRepository(
+    _baseGlucoseRepository,
+    (sync) => SyncingGlucoseRepository(
+      delegate: _baseGlucoseRepository,
+      syncRepository: sync,
+    ),
+  );
+  late final MealRepository _mealRepository = _makeRepository(
+    _baseMealRepository,
+    (sync) => SyncingMealRepository(
+      delegate: _baseMealRepository,
+      syncRepository: sync,
+    ),
+  );
+  late final MedicationRepository _medicationRepository = _makeRepository(
+    _baseMedicationRepository,
+    (sync) => SyncingMedicationRepository(
+      delegate: _baseMedicationRepository,
+      syncRepository: sync,
+    ),
+  );
+  late final BiometricRepository _biometricRepository = _makeRepository(
+    _baseBiometricRepository,
+    (sync) => SyncingBiometricRepository(
+      delegate: _baseBiometricRepository,
+      syncRepository: sync,
+    ),
+  );
+
+  /// Devuelve [base] sin cambios si no hay sincronización habilitada
+  /// ([_syncRepository] es `null`), o el resultado de [wrap] con el
+  /// [CloudSyncRepository] ya no nulo en caso contrario. Evita repetir
+  /// el mismo `_syncRepository == null ? ... : ...` (con una
+  /// aserción `!` redundante para el analizador) en cada repositorio.
+  T _makeRepository<T>(T base, T Function(CloudSyncRepository sync) wrap) {
+    final sync = _syncRepository;
+    return sync == null ? base : wrap(sync);
+  }
+  // No usa `??` por la misma razón que `_syncRepository`: el valor
   // por defecto de `GlucoseImportRepository` es `null` (no una
   // implementación real), ya que esta funcionalidad depende del plugin
   // `health` real (`enableHealthImport`), y los tests de widgets no
@@ -206,6 +261,8 @@ class _HomeScreenState extends State<HomeScreen> {
   GlucoseMeasurement? _lastMeasurement;
   bool _isLoading = true;
   StreamSubscription<void>? _notificationTapSubscription;
+  StreamSubscription<AppUser?>? _authStateSubscription;
+  bool _wasSignedIn = false;
 
   @override
   void initState() {
@@ -215,11 +272,58 @@ class _HomeScreenState extends State<HomeScreen> {
       _reviewPendingReminders();
       _setUpNotificationTapHandling();
     }
+    if (_syncRepository != null) {
+      _setUpCloudSyncPullOnSignIn();
+    }
+  }
+
+  /// Dispara [CloudSyncRepository.pullMissingFromCloud] automáticamente
+  /// cada vez que se detecta una sesión recién iniciada (incluida la
+  /// restauración automática de sesión al abrir la app), pensado para
+  /// que un dispositivo nuevo (por ejemplo, tras cambiar de celular)
+  /// recupere en silencio el historial completo sin ninguna acción
+  /// manual. No se dispara al cerrar sesión, ni se repite mientras la
+  /// sesión siga iniciada.
+  void _setUpCloudSyncPullOnSignIn() {
+    _wasSignedIn = _authRepository.currentUser != null;
+    if (_wasSignedIn) {
+      unawaited(_pullMissingFromCloudSilently());
+    }
+    _authStateSubscription = _authRepository.authStateChanges().listen((
+      user,
+    ) {
+      final isSignedIn = user != null;
+      if (isSignedIn && !_wasSignedIn) {
+        unawaited(_pullMissingFromCloudSilently());
+      }
+      _wasSignedIn = isSignedIn;
+    });
+  }
+
+  /// Ejecuta la fusión automática desde la nube sin interrumpir a quien
+  /// use la app: cualquier falla (por ejemplo, sin conexión) se
+  /// descarta en silencio, porque esta operación no la inició el
+  /// usuario explícitamente. Si trae registros nuevos, refresca la
+  /// tarjeta de glucosa para reflejarlos de inmediato.
+  Future<void> _pullMissingFromCloudSilently() async {
+    final syncRepository = _syncRepository;
+    if (syncRepository == null) {
+      return;
+    }
+    try {
+      final summary = await syncRepository.pullMissingFromCloud();
+      if (summary.addedGlucoseMeasurements > 0) {
+        await _loadLastMeasurement();
+      }
+    } on CloudSyncException {
+      // Falla silenciosa: ver documentación de este método.
+    }
   }
 
   @override
   void dispose() {
     _notificationTapSubscription?.cancel();
+    _authStateSubscription?.cancel();
     super.dispose();
   }
 
@@ -410,10 +514,7 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (context) => AuthScreen(
-          repository: _authRepository,
-          backupRepository: _backupRepository,
-        ),
+        builder: (context) => AuthScreen(repository: _authRepository),
       ),
     );
   }

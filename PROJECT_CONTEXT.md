@@ -1737,6 +1737,193 @@ Prioridad futura:
 
 # Historial de cambios
 
+## 2026-10-20 — Sincronización en tiempo real: push/pull automático en Android/iOS y visor de solo lectura en Windows/macOS
+
+Reemplaza por completo el respaldo manual (botones "Respaldar"/
+"Restaurar"/"Fusionar" de la entrada anterior) por sincronización
+automática y silenciosa, más un visor de solo lectura en escritorio.
+Decisiones de alcance acordadas antes de implementar:
+
+* "Sincronizar entre dispositivos" se interpretó como dos casos
+  distintos: (1) migrar de celular viejo a celular nuevo (debe quedar
+  usable con todo el historial, sin acción manual), y (2) un panel de
+  **solo lectura** en Windows/macOS (nunca puede crear/editar/borrar).
+* En el celular, el push a la nube es automático y silencioso (al
+  guardar un registro, se sube solo, sin botón). Al iniciar sesión
+  (incluida la restauración automática de sesión al abrir la app), se
+  trae automáticamente del servidor lo que falte localmente (por
+  `uuid`) y se fusiona con lo ya guardado en el dispositivo, sin
+  reemplazar nada.
+* Linux queda explícitamente fuera del visor de escritorio: ni
+  `firebase_auth` ni `cloud_firestore` tienen soporte oficial ahí en
+  FlutterFire (ver tabla de plataformas de cada paquete en pub.dev).
+  Sigue funcionando con SQLite local, sin sincronización.
+* Los botones manuales de respaldo (`BackupRepository`,
+  `FirestoreBackupRepository`, `backups/{uid}` en Firestore) se
+  eliminaron por completo en vez de coexistir con el nuevo esquema,
+  para no mantener dos formas distintas de sincronizar. No había datos
+  reales en `backups/{uid}` que migrar.
+
+**Infraestructura Firebase**: se ejecutó `flutterfire configure` para
+registrar apps nuevas de macOS y Windows en el proyecto
+`seguimiento-glucosa` (`lib/firebase_options.dart`, `firebase.json`).
+macOS reutiliza la configuración de la app iOS (mismo
+`GoogleService-Info.plist`); Windows usa el SDK web de Firebase bajo
+el capó (no hay SDK nativo de Firebase para Windows). Se agregó el
+entitlement `com.apple.security.network.client` a
+`macos/Runner/{Debug,Release}.entitlements` (antes solo tenían
+`network.server`, usado por el VM service de depuración, no por
+llamadas salientes), necesario para que Firestore funcione bajo el
+sandbox de macOS.
+
+**Nuevo esquema de Firestore** (reemplaza `backups/{uid}`):
+
+```text
+users/{uid}/glucose_measurements/{uuid}
+users/{uid}/meals/{uuid}
+users/{uid}/medication_intakes/{uuid}
+users/{uid}/biometric_measurements/{uuid}
+```
+
+Un documento por registro (no un array dentro de un documento único),
+indexado por el `uuid` ya existente en cada modelo. Permite `set` por
+`uuid` sin duplicar y `snapshots()` reactivo por subcolección, sin
+acercarse al límite de 1 MiB por documento de Firestore.
+`firestore.rules` se actualizó para este esquema: cada usuario
+autenticado solo lee/escribe sus propias subcolecciones.
+
+**Código nuevo**:
+
+* `lib/services/cloud_sync_repository.dart`: `CloudSyncException`,
+  `CloudSyncPullSummary` (`addedGlucoseMeasurements`, `addedMeals`,
+  `addedMedicationIntakes`, `addedBiometricMeasurements`,
+  `totalAdded`), `CloudSyncViewer` (contrato de solo lectura:
+  `watchGlucoseMeasurements`/`watchMeals`/`watchMedicationIntakes`/
+  `watchBiometricMeasurements`, cada uno un `Stream` con la lista
+  completa actualizada en vivo) y `CloudSyncRepository` (extiende
+  `CloudSyncViewer` y agrega `pushGlucoseMeasurement`/`pushMeal`/
+  `pushMedicationIntake`/`pushBiometricMeasurement` —nunca lanzan
+  excepciones, fallan en silencio— y `pullMissingFromCloud` —sí puede
+  lanzar `CloudSyncException`, pensado para que quien lo invoque
+  decida si informar el error o absorberlo—).
+* `lib/services/cloud_sync_serialization.dart`: funciones de
+  (de)serialización (`glucoseToMap`/`glucoseFromMap` y equivalentes
+  para `Meal`, `MedicationIntake`, `BiometricMeasurement`), extraídas
+  como funciones de nivel superior (no métodos) para compartirlas
+  entre `FirestoreCloudSyncRepository` y `FirestoreCloudSyncViewer`
+  sin duplicar el formato de cada documento.
+* `lib/services/firestore_cloud_sync_repository.dart`:
+  `FirestoreCloudSyncRepository`, implementación completa (push +
+  pull + watch) usada en Android/iOS. Requiere los 4 repositorios
+  SQLite por constructor (los necesita para `pullMissingFromCloud` y
+  para comparar `uuid`s existentes).
+* `lib/services/firestore_cloud_sync_viewer.dart`:
+  `FirestoreCloudSyncViewer`, implementación **solo de los 4
+  métodos `watch*`** (sin `push`/`pull`, sin ningún repositorio SQLite
+  como dependencia), usada en el visor de Windows/macOS. Existe como
+  clase separada de `FirestoreCloudSyncRepository` a propósito: en
+  Windows no hay soporte nativo de `sqflite` sin configurar
+  `sqflite_common_ffi` aparte, y el visor nunca necesita
+  almacenamiento local, así que no debía arrastrar esa dependencia.
+* `lib/services/syncing_repositories.dart`: `SyncingGlucoseRepository`,
+  `SyncingMealRepository`, `SyncingMedicationRepository`,
+  `SyncingBiometricRepository`. Decoradores que envuelven cada
+  repositorio SQLite (`delegate`) delegando todos los métodos salvo
+  `addX`: tras guardar localmente, llaman (con `unawaited`, sin
+  esperar ni propagar errores) al `pushX` correspondiente de un
+  `CloudSyncRepository` inyectado.
+* `lib/screens/cloud_viewer_screen.dart`: `CloudViewerScreen`, pantalla
+  de solo lectura para escritorio. Sin sesión iniciada, muestra un
+  aviso con botón "Iniciar sesión" (abre `AuthScreen`, reutilizada tal
+  cual: el formulario de email/Google no cambia). Con sesión iniciada,
+  cuatro pestañas (Glucosa/Comida/Medicamentos/Biometría), cada una un
+  `StreamBuilder` sobre el método `watch*` correspondiente de
+  `CloudSyncViewer`, con los mismos `ListTile` que ya usaban
+  `HistoryScreen`/`MealScreen`/etc. (reconstruidos aquí porque esos
+  widgets de fila eran privados de sus pantallas de origen). Ningún
+  botón de crear/editar/borrar en toda la pantalla.
+
+**Código modificado**:
+
+* `lib/screens/home_screen.dart`:
+  * `HomeScreen` reemplaza `backupRepository`/`enableCloudBackup` por
+    `syncRepository`/`enableCloudSync`.
+  * `_HomeScreenState` ahora distingue repositorios "base" (SQLite
+    puro: `_baseGlucoseRepository` y equivalentes) de los que de
+    verdad usan el resto de la pantalla (`_repository` y equivalentes),
+    estos últimos envueltos en su `Syncing*Repository` cuando
+    `_syncRepository` no es `null` (ver método auxiliar
+    `_makeRepository`, que evita repetir la misma rama en cada
+    repositorio).
+  * Nuevo método `_setUpCloudSyncPullOnSignIn`: se suscribe a
+    `AuthRepository.authStateChanges()` y dispara
+    `pullMissingFromCloud()` cada vez que detecta una transición de
+    "sin sesión" a "con sesión" (incluida la sesión ya iniciada al
+    construir el widget, p. ej. tras cambiar de celular). No se repite
+    mientras la sesión siga iniciada ni se dispara al cerrar sesión.
+    Cualquier `CloudSyncException` se descarta en silencio
+    (`_pullMissingFromCloudSilently`): es una operación que el usuario
+    no inició explícitamente, así que no debe interrumpirlo con un
+    error.
+  * `_openAuthScreen` ya no pasa `backupRepository` a `AuthScreen`.
+* `lib/screens/auth_screen.dart`: se eliminaron `backupRepository`,
+  los métodos `_backup`/`_confirmAndRestore`/`_merge` y los tres
+  botones correspondientes. `_AccountView` pasó de `StatefulWidget` a
+  `StatelessWidget` (ya no necesita estado propio: solo mostraba
+  `_isBusy`/`_statusMessage` de las operaciones manuales eliminadas).
+  En su lugar, un texto fijo explica que la sincronización ya es
+  automática mientras haya sesión iniciada.
+* `lib/main.dart`: nuevo método `_homeForCurrentPlatform` en
+  `SeguimientoGlucosaApp.build`: en Windows/macOS construye
+  `CloudViewerScreen` (con `FirestoreCloudSyncViewer`); en cualquier
+  otra plataforma (Android/iOS, y Linux como excepción documentada)
+  construye `HomeScreen` con `enableCloudSync: true`.
+* `lib/services/glucose_import_repository.dart`,
+  `health_glucose_import_repository.dart`,
+  `meal_glucose_reminder_coordinator.dart`: comentarios actualizados
+  (referenciaban a `BackupRepository`/`FirestoreBackupRepository`, ya
+  eliminados) para seguir señalando un ejemplo válido del mismo patrón
+  que describen.
+* `firestore.rules`: reglas para el nuevo esquema `users/{uid}/...`
+  (reemplaza las de `backups/{uid}`).
+* `macos/Runner/DebugProfile.entitlements`,
+  `macos/Runner/Release.entitlements`: agregado
+  `com.apple.security.network.client`.
+
+**Archivos eliminados**: `lib/services/backup_repository.dart`,
+`lib/services/firestore_backup_repository.dart` (ver justificación de
+alcance arriba).
+
+**Tests** (`test/widget_test.dart`): `_FakeBackupRepository` se
+reemplazó por `_FakeCloudSyncRepository` (implementa
+`CloudSyncRepository` completo; los `push*` solo cuentan llamadas,
+nunca lanzan; `pullMissingFromCloud` respeta `failPullWith`/
+`pullResult`; los `watch*` devuelven streams vacíos de un solo valor,
+suficiente para los tests de widgets que no ejercitan el visor de
+escritorio). Los 7 tests antiguos de respaldar/restaurar/fusionar se
+reemplazaron por 5 tests nuevos: aviso de sincronización automática en
+Cuenta (sin botones de respaldo), push automático al guardar una
+medición, pull automático con sesión ya iniciada al abrir la app, pull
+automático al iniciar sesión con la app ya abierta, y que un error al
+fusionar no interrumpe la app. `CloudViewerScreen` no tiene tests de
+widgets propios en esta entrada (requeriría mockear
+`cloud_firestore`/`firebase_auth`, fuera de alcance de este cambio;
+queda como trabajo pendiente si se detectan regresiones ahí).
+
+**Limitaciones conocidas**:
+
+* No se pudo compilar un ejecutable de Windows en este entorno (sin
+  Visual Studio/MSBuild instalado): la validación se limitó a
+  `flutter analyze`/`flutter test` (ambos limpios). Falta una
+  validación manual en una máquina Windows real con Visual Studio, y
+  en una Mac real con Xcode, antes de considerar esto probado en
+  dispositivo.
+* `CloudViewerScreen` no se probó manualmente contra Firestore real
+  (requiere las apps de escritorio ya compiladas). El esquema de
+  Firestore y las reglas de seguridad tampoco se desplegaron a
+  producción (`firebase deploy --only firestore:rules` queda
+  pendiente antes de que el nuevo esquema funcione en producción).
+
 ## 2026-10-19 (3) — Fusión manual desde la nube por uuid (BackupRepository.mergeFromCloud)
 
 * Segundo paso del roadmap punto 3, sobre la base de la entrada

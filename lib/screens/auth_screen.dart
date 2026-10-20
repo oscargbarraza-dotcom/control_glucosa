@@ -2,29 +2,24 @@ import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
 import '../services/auth_repository.dart';
-import '../services/backup_repository.dart';
 
 /// Pantalla de cuenta: inicio de sesión, registro, o resumen de la
-/// cuenta ya autenticada (con opción de cerrar sesión y de respaldar o
-/// restaurar los datos en la nube).
+/// cuenta ya autenticada (con opción de cerrar sesión).
 ///
 /// El inicio de sesión es opcional en la app: esta pantalla se abre
 /// desde un acceso en `HomeScreen`, sin bloquear el uso del resto de
 /// módulos (Glucosa, Comida, Medicamentos, Biometría, Historial), que
 /// siguen funcionando sobre SQLite sin necesidad de una cuenta.
+///
+/// Mientras haya sesión iniciada, cada registro nuevo (en Android/iOS)
+/// se sincroniza solo con la nube en segundo plano —ver
+/// `SyncingGlucoseRepository` y equivalentes en
+/// `lib/services/syncing_repositories.dart`—, sin que esta pantalla
+/// deba ofrecer ningún botón manual de respaldo o restauración.
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({
-    super.key,
-    required this.repository,
-    this.backupRepository,
-  });
+  const AuthScreen({super.key, required this.repository});
 
   final AuthRepository repository;
-
-  /// Repositorio de respaldo/restauración en la nube. Si es `null`, no
-  /// se muestran los botones correspondientes (p. ej. en tests que no
-  /// necesitan probar esa funcionalidad).
-  final BackupRepository? backupRepository;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -41,11 +36,7 @@ class _AuthScreenState extends State<AuthScreen> {
         builder: (context, snapshot) {
           final user = snapshot.data;
           if (user != null) {
-            return _AccountView(
-              user: user,
-              repository: widget.repository,
-              backupRepository: widget.backupRepository,
-            );
+            return _AccountView(user: user, repository: widget.repository);
           }
           return _AuthForm(repository: widget.repository);
         },
@@ -54,156 +45,12 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-/// Resumen de la cuenta autenticada, con opción de cerrar sesión y de
-/// respaldar/restaurar los datos en la nube (si [backupRepository] no
-/// es `null`).
-class _AccountView extends StatefulWidget {
-  const _AccountView({
-    required this.user,
-    required this.repository,
-    this.backupRepository,
-  });
+/// Resumen de la cuenta autenticada, con opción de cerrar sesión.
+class _AccountView extends StatelessWidget {
+  const _AccountView({required this.user, required this.repository});
 
   final AppUser user;
   final AuthRepository repository;
-  final BackupRepository? backupRepository;
-
-  @override
-  State<_AccountView> createState() => _AccountViewState();
-}
-
-class _AccountViewState extends State<_AccountView> {
-  bool _isBusy = false;
-  String? _statusMessage;
-
-  Future<void> _backup() async {
-    final backupRepository = widget.backupRepository;
-    if (backupRepository == null) {
-      return;
-    }
-    setState(() {
-      _isBusy = true;
-      _statusMessage = null;
-    });
-    try {
-      await backupRepository.backup();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _statusMessage = 'Respaldo guardado correctamente.';
-      });
-    } on BackupException catch (e) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _statusMessage = e.message;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBusy = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _confirmAndRestore() async {
-    final backupRepository = widget.backupRepository;
-    if (backupRepository == null) {
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Restaurar desde la nube'),
-        content: const Text(
-          'Esto reemplazará todos tus datos locales (glucosa, comidas, '
-          'medicamentos, biometría) por la última copia guardada en la '
-          'nube. Esta acción no se puede deshacer. ¿Continuar?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Restaurar'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) {
-      return;
-    }
-
-    setState(() {
-      _isBusy = true;
-      _statusMessage = null;
-    });
-    try {
-      await backupRepository.restore();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _statusMessage = 'Datos restaurados correctamente.';
-      });
-    } on BackupException catch (e) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _statusMessage = e.message;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBusy = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _merge() async {
-    final backupRepository = widget.backupRepository;
-    if (backupRepository == null) {
-      return;
-    }
-    setState(() {
-      _isBusy = true;
-      _statusMessage = null;
-    });
-    try {
-      final summary = await backupRepository.mergeFromCloud();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _statusMessage = summary.totalAdded == 0
-            ? 'No había datos nuevos que agregar: ya tenías todo lo del '
-                  'respaldo.'
-            : 'Se agregaron ${summary.totalAdded} registro(s) nuevo(s) '
-                  'desde la nube.';
-      });
-    } on BackupException catch (e) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _statusMessage = e.message;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBusy = false;
-        });
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -215,80 +62,35 @@ class _AccountViewState extends State<_AccountView> {
           const Icon(Icons.account_circle, size: 80, color: Colors.deepPurple),
           const SizedBox(height: 16),
           Text(
-            widget.user.displayName ?? 'Sesión iniciada',
+            user.displayName ?? 'Sesión iniciada',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
-          if (widget.user.email != null) ...[
+          if (user.email != null) ...[
             const SizedBox(height: 4),
             Text(
-              widget.user.email!,
+              user.email!,
               style: const TextStyle(color: Colors.black54),
               textAlign: TextAlign.center,
             ),
           ],
-          if (widget.backupRepository != null) ...[
-            const SizedBox(height: 24),
-            const Divider(),
-            const SizedBox(height: 8),
-            const Text(
-              'Respaldo en la nube',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Guarda o recupera una copia de tu historial completo '
-              '(glucosa, comidas, medicamentos, biometría).',
-              style: TextStyle(color: Colors.black54, fontSize: 13),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            if (_statusMessage != null) ...[
-              Text(_statusMessage!, textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-            ],
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isBusy ? null : _backup,
-                child: _isBusy
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
-                      )
-                    : const Text('Respaldar en la nube'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: _isBusy ? null : _confirmAndRestore,
-                child: const Text('Restaurar desde la nube'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: _isBusy ? null : _merge,
-                child: const Text('Fusionar desde la nube'),
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              '"Restaurar" reemplaza todo; "Fusionar" solo agrega lo que '
-              'falte, sin borrar nada de este dispositivo.',
-              style: TextStyle(color: Colors.black54, fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
-          ],
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 8),
+          const Icon(Icons.cloud_sync, color: Colors.black54),
+          const SizedBox(height: 4),
+          const Text(
+            'Tu historial (glucosa, comidas, medicamentos, biometría) se '
+            'sincroniza solo con la nube mientras tengas sesión iniciada, '
+            'sin ninguna acción adicional.',
+            style: TextStyle(color: Colors.black54, fontSize: 13),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
-              onPressed: () => widget.repository.signOut(),
+              onPressed: () => repository.signOut(),
               child: const Text('Cerrar sesión'),
             ),
           ),

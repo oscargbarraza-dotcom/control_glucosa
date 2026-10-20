@@ -16,7 +16,9 @@
           "projectId": "seguimiento-glucosa",
           "configurations": {
             "android": "1:371154041496:android:cd5819a71849f4da9daeed",
-            "ios": "1:371154041496:ios:1cd95e8a7d01632f9daeed"
+            "ios": "1:371154041496:ios:1cd95e8a7d01632f9daeed",
+            "macos": "1:371154041496:ios:1cd95e8a7d01632f9daeed",
+            "windows": "1:371154041496:web:a1328b5811d953cf9daeed"
           }
         }
       }

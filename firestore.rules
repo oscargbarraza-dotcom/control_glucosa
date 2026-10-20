@@ -1,14 +1,17 @@
 rules_version = '2';
 
-// Reglas de seguridad para el respaldo/restauración en la nube
-// (roadmap punto 14). Cada usuario autenticado solo puede leer y
-// escribir su propio documento de respaldo, identificado por su uid.
-// Nadie puede acceder al respaldo de otro usuario, ni usuarios no
-// autenticados acceder a ningún dato.
+// Reglas de seguridad para la sincronización en la nube ("Sincronización
+// en tiempo real"). Cada usuario autenticado solo puede leer y escribir
+// los registros de salud guardados bajo su propio uid, en las
+// subcolecciones users/{uid}/glucose_measurements,
+// users/{uid}/meals, users/{uid}/medication_intakes y
+// users/{uid}/biometric_measurements. Nadie puede acceder a los datos
+// de otro usuario, ni usuarios no autenticados acceder a ningún dato.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /backups/{userId} {
+    match /users/{userId}/{collection}/{documentId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
+

@@ -2,7 +2,7 @@
 // etc.) para legibilidad en el sitio de construcción; con initializing
 // formals el nombre externo del parámetro quedaría igual al del campo
 // privado (`_reminderRepository`), lo que no es válido para parámetros
-// nombrados. Mismo patrón ya usado en `FirestoreBackupRepository`.
+// nombrados. Mismo patrón ya usado en `FirestoreCloudSyncRepository`.
 // ignore_for_file: prefer_initializing_formals
 
 import '../models/glucose_measurement.dart';

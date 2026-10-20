@@ -28,15 +28,9 @@ class DefaultFirebaseOptions {
       case TargetPlatform.iOS:
         return ios;
       case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -56,13 +50,37 @@ class DefaultFirebaseOptions {
     projectId: 'seguimiento-glucosa',
     storageBucket: 'seguimiento-glucosa.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyAGnX6qOtKxSvQsnk1lFuQN0D0bjBaR1z4',
     appId: '1:371154041496:ios:1cd95e8a7d01632f9daeed',
     messagingSenderId: '371154041496',
     projectId: 'seguimiento-glucosa',
     storageBucket: 'seguimiento-glucosa.firebasestorage.app',
+    androidClientId:
+        '371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com',
+    iosClientId:
+        '371154041496-j670gohkjjcakfabastvh4h2flk0jld9.apps.googleusercontent.com',
     iosBundleId: 'com.example.seguimientoGlucosa',
+  );
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyAGnX6qOtKxSvQsnk1lFuQN0D0bjBaR1z4',
+    appId: '1:371154041496:ios:1cd95e8a7d01632f9daeed',
+    messagingSenderId: '371154041496',
+    projectId: 'seguimiento-glucosa',
+    storageBucket: 'seguimiento-glucosa.firebasestorage.app',
+    androidClientId:
+        '371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com',
+    iosClientId:
+        '371154041496-j670gohkjjcakfabastvh4h2flk0jld9.apps.googleusercontent.com',
+    iosBundleId: 'com.example.seguimientoGlucosa',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyDxVTLk3ZAG8GbkUKQPazMrvcr2-0lqzKo',
+    appId: '1:371154041496:web:a1328b5811d953cf9daeed',
+    messagingSenderId: '371154041496',
+    projectId: 'seguimiento-glucosa',
+    authDomain: 'seguimiento-glucosa.firebaseapp.com',
+    storageBucket: 'seguimiento-glucosa.firebasestorage.app',
   );
 }

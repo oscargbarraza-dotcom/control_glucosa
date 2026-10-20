@@ -30,8 +30,8 @@ import 'package:seguimiento_glucosa/models/medication_intake.dart';
 import 'package:seguimiento_glucosa/models/user_profile.dart';
 import 'package:seguimiento_glucosa/screens/home_screen.dart';
 import 'package:seguimiento_glucosa/services/auth_repository.dart';
-import 'package:seguimiento_glucosa/services/backup_repository.dart';
 import 'package:seguimiento_glucosa/services/biometric_repository.dart';
+import 'package:seguimiento_glucosa/services/cloud_sync_repository.dart';
 import 'package:seguimiento_glucosa/services/glucose_import_repository.dart';
 import 'package:seguimiento_glucosa/services/glucose_repository.dart';
 import 'package:seguimiento_glucosa/services/meal_glucose_reminder_repository.dart';
@@ -354,19 +354,22 @@ class _FakeAuthRepository implements AuthRepository {
   }
 }
 
-/// Repositorio de respaldo/restauración en memoria usado solo en
+/// Repositorio de sincronización en la nube en memoria usado solo en
 /// pruebas, para evitar llamadas reales a Cloud Firestore durante los
-/// widget tests. Un flag [failWith] permite simular un error en la
-/// próxima operación.
-class _FakeBackupRepository implements BackupRepository {
-  bool hasBackup = false;
-  int backupCallCount = 0;
-  int restoreCallCount = 0;
-  int mergeCallCount = 0;
-  BackupException? failWith;
+/// widget tests. Un flag [failPullWith] permite simular un error en la
+/// próxima llamada a [pullMissingFromCloud]; los métodos `push*` nunca
+/// lanzan excepciones, igual que la implementación real.
+class _FakeCloudSyncRepository implements CloudSyncRepository {
+  int pushGlucoseCallCount = 0;
+  int pushMealCallCount = 0;
+  int pushMedicationIntakeCallCount = 0;
+  int pushBiometricCallCount = 0;
+  int pullCallCount = 0;
+  CloudSyncException? failPullWith;
 
-  /// Resultado que devolverá la próxima llamada a [mergeFromCloud].
-  BackupMergeSummary mergeResult = const BackupMergeSummary(
+  /// Resultado que devolverá la próxima llamada a
+  /// [pullMissingFromCloud].
+  CloudSyncPullSummary pullResult = const CloudSyncPullSummary(
     addedGlucoseMeasurements: 0,
     addedMeals: 0,
     addedMedicationIntakes: 0,
@@ -374,44 +377,50 @@ class _FakeBackupRepository implements BackupRepository {
   );
 
   @override
-  Future<void> backup() async {
-    if (failWith != null) {
-      throw failWith!;
-    }
-    backupCallCount++;
-    hasBackup = true;
+  Future<void> pushGlucoseMeasurement(GlucoseMeasurement measurement) async {
+    pushGlucoseCallCount++;
   }
 
   @override
-  Future<void> restore() async {
-    if (failWith != null) {
-      throw failWith!;
-    }
-    if (!hasBackup) {
-      throw const BackupException(
-        'Todavía no tienes ningún respaldo guardado en la nube.',
-      );
-    }
-    restoreCallCount++;
+  Future<void> pushMeal(Meal meal) async {
+    pushMealCallCount++;
   }
 
   @override
-  Future<BackupMergeSummary> mergeFromCloud() async {
-    if (failWith != null) {
-      throw failWith!;
-    }
-    if (!hasBackup) {
-      throw const BackupException(
-        'Todavía no tienes ningún respaldo guardado en la nube.',
-      );
-    }
-    mergeCallCount++;
-    return mergeResult;
+  Future<void> pushMedicationIntake(MedicationIntake intake) async {
+    pushMedicationIntakeCallCount++;
   }
 
   @override
-  Future<DateTime?> getLastBackupTime() async =>
-      hasBackup ? DateTime(2026, 1, 1) : null;
+  Future<void> pushBiometricMeasurement(
+    BiometricMeasurement measurement,
+  ) async {
+    pushBiometricCallCount++;
+  }
+
+  @override
+  Future<CloudSyncPullSummary> pullMissingFromCloud() async {
+    if (failPullWith != null) {
+      throw failPullWith!;
+    }
+    pullCallCount++;
+    return pullResult;
+  }
+
+  @override
+  Stream<List<GlucoseMeasurement>> watchGlucoseMeasurements() =>
+      Stream.value(const []);
+
+  @override
+  Stream<List<Meal>> watchMeals() => Stream.value(const []);
+
+  @override
+  Stream<List<MedicationIntake>> watchMedicationIntakes() =>
+      Stream.value(const []);
+
+  @override
+  Stream<List<BiometricMeasurement>> watchBiometricMeasurements() =>
+      Stream.value(const []);
 }
 
 /// Repositorio de importación desde sensores/CGM en memoria usado solo
@@ -1250,8 +1259,8 @@ void main() {
   });
 
   testWidgets(
-    'Con sesión iniciada y backupRepository, se muestran los botones de '
-    'respaldo',
+    'Con sesión iniciada y syncRepository, Cuenta muestra el aviso de '
+    'sincronización automática (sin botones manuales de respaldo)',
     (WidgetTester tester) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
@@ -1262,7 +1271,7 @@ void main() {
           home: HomeScreen(
             repository: _FakeGlucoseRepository(),
             authRepository: _FakeAuthRepository(),
-            backupRepository: _FakeBackupRepository(),
+            syncRepository: _FakeCloudSyncRepository(),
           ),
         ),
       );
@@ -1274,178 +1283,125 @@ void main() {
       await tester.tap(find.text('Continuar con Google'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Respaldar en la nube'), findsOneWidget);
-      expect(find.text('Restaurar desde la nube'), findsOneWidget);
-      expect(find.text('Fusionar desde la nube'), findsOneWidget);
+      expect(
+        find.textContaining('se sincroniza solo con la nube'),
+        findsOneWidget,
+      );
+      expect(find.text('Respaldar en la nube'), findsNothing);
+      expect(find.text('Restaurar desde la nube'), findsNothing);
+      expect(find.text('Fusionar desde la nube'), findsNothing);
     },
   );
 
-  testWidgets('Respaldar en la nube muestra un mensaje de éxito', (
+  testWidgets('Guardar una medición la sincroniza automáticamente', (
     WidgetTester tester,
   ) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-
-    final backupRepository = _FakeBackupRepository();
+    final syncRepository = _FakeCloudSyncRepository();
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
           repository: _FakeGlucoseRepository(),
           authRepository: _FakeAuthRepository(),
-          backupRepository: backupRepository,
+          syncRepository: syncRepository,
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Cuenta'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Continuar con Google'));
+    await tester.tap(find.text('Glucosa actual'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Respaldar en la nube'));
+    await tester.enterText(find.byType(TextFormField), '120');
+    await tester.tap(find.text('Guardar'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Respaldo guardado correctamente.'), findsOneWidget);
-    expect(backupRepository.backupCallCount, 1);
-  });
-
-  testWidgets('Restaurar desde la nube pide confirmación y luego restaura', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-
-    final backupRepository = _FakeBackupRepository()..hasBackup = true;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomeScreen(
-          repository: _FakeGlucoseRepository(),
-          authRepository: _FakeAuthRepository(),
-          backupRepository: backupRepository,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byTooltip('Cuenta'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Continuar con Google'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Restaurar desde la nube'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Restaurar'), findsWidgets);
-    expect(
-      find.textContaining('reemplazará todos tus datos locales'),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.text('Restaurar').last);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Datos restaurados correctamente.'), findsOneWidget);
-    expect(backupRepository.restoreCallCount, 1);
-  });
-
-  testWidgets('Cancelar el diálogo de restaurar no ejecuta la restauración', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-
-    final backupRepository = _FakeBackupRepository()..hasBackup = true;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomeScreen(
-          repository: _FakeGlucoseRepository(),
-          authRepository: _FakeAuthRepository(),
-          backupRepository: backupRepository,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byTooltip('Cuenta'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Continuar con Google'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Restaurar desde la nube'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Cancelar'));
-    await tester.pumpAndSettle();
-
-    expect(backupRepository.restoreCallCount, 0);
+    expect(syncRepository.pushGlucoseCallCount, 1);
   });
 
   testWidgets(
-    'Fusionar desde la nube no pide confirmación y muestra cuántos '
-    'registros nuevos se agregaron',
+    'Con sesión ya iniciada al abrir la app, se dispara la fusión '
+    'automática desde la nube',
     (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-
-      final backupRepository = _FakeBackupRepository()
-        ..hasBackup = true
-        ..mergeResult = const BackupMergeSummary(
-          addedGlucoseMeasurements: 2,
-          addedMeals: 1,
+      final authRepository = _FakeAuthRepository();
+      // Simula una sesión ya restaurada automáticamente por Firebase al
+      // abrir la app (p. ej. al migrar a un celular nuevo).
+      await authRepository.signInWithGoogle();
+      final syncRepository = _FakeCloudSyncRepository()
+        ..pullResult = const CloudSyncPullSummary(
+          addedGlucoseMeasurements: 1,
+          addedMeals: 0,
           addedMedicationIntakes: 0,
           addedBiometricMeasurements: 0,
         );
+
       await tester.pumpWidget(
         MaterialApp(
           home: HomeScreen(
             repository: _FakeGlucoseRepository(),
-            authRepository: _FakeAuthRepository(),
-            backupRepository: backupRepository,
+            authRepository: authRepository,
+            syncRepository: syncRepository,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Cuenta'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Continuar con Google'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Fusionar desde la nube'));
-      await tester.pumpAndSettle();
-
-      // No debe aparecer ningún diálogo de confirmación: a diferencia
-      // de "Restaurar", fusionar nunca borra nada local.
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(
-        find.text('Se agregaron 3 registro(s) nuevo(s) desde la nube.'),
-        findsOneWidget,
-      );
-      expect(backupRepository.mergeCallCount, 1);
-      expect(backupRepository.restoreCallCount, 0);
+      expect(syncRepository.pullCallCount, 1);
     },
   );
 
   testWidgets(
-    'Fusionar desde la nube sin datos nuevos muestra el mensaje '
-    'correspondiente',
+    'Iniciar sesión mientras la app está abierta dispara la fusión '
+    'automática desde la nube',
     (WidgetTester tester) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
 
-      final backupRepository = _FakeBackupRepository()..hasBackup = true;
+      final authRepository = _FakeAuthRepository();
+      final syncRepository = _FakeCloudSyncRepository();
+
       await tester.pumpWidget(
         MaterialApp(
           home: HomeScreen(
             repository: _FakeGlucoseRepository(),
-            authRepository: _FakeAuthRepository(),
-            backupRepository: backupRepository,
+            authRepository: authRepository,
+            syncRepository: syncRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(syncRepository.pullCallCount, 0);
+
+      await tester.tap(find.byTooltip('Cuenta'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continuar con Google'));
+      await tester.pumpAndSettle();
+
+      expect(syncRepository.pullCallCount, 1);
+    },
+  );
+
+  testWidgets(
+    'Un error al fusionar automáticamente desde la nube no interrumpe '
+    'la app (falla en silencio)',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final authRepository = _FakeAuthRepository();
+      final syncRepository = _FakeCloudSyncRepository()
+        ..failPullWith = const CloudSyncException(
+          'No se pudo sincronizar con la nube. Verifica tu conexión e '
+          'intenta nuevamente.',
+        );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            authRepository: authRepository,
+            syncRepository: syncRepository,
           ),
         ),
       );
@@ -1456,58 +1412,13 @@ void main() {
       await tester.tap(find.text('Continuar con Google'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Fusionar desde la nube'));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text(
-          'No había datos nuevos que agregar: ya tenías todo lo del '
-          'respaldo.',
-        ),
-        findsOneWidget,
-      );
+      // No debe mostrarse ningún mensaje de error ni romperse la app:
+      // la fusión automática es silenciosa (ver documentación de
+      // `CloudSyncRepository.pullMissingFromCloud`). La pantalla de
+      // Cuenta sigue mostrando la sesión ya iniciada con normalidad.
+      expect(find.text('Persona de Prueba'), findsOneWidget);
     },
   );
-
-  testWidgets('Un error de respaldo muestra un mensaje legible', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-
-    final backupRepository = _FakeBackupRepository()
-      ..failWith = const BackupException(
-        'No se pudo respaldar en la nube. Verifica tu conexión e '
-        'intenta nuevamente.',
-      );
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomeScreen(
-          repository: _FakeGlucoseRepository(),
-          authRepository: _FakeAuthRepository(),
-          backupRepository: backupRepository,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byTooltip('Cuenta'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Continuar con Google'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Respaldar en la nube'));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text(
-        'No se pudo respaldar en la nube. Verifica tu conexión e '
-        'intenta nuevamente.',
-      ),
-      findsOneWidget,
-    );
-  });
 
   testWidgets(
     'Sin importRepository, HistoryScreen no muestra el botón de importar',
