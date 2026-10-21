@@ -267,7 +267,7 @@ class _BiometricFormState extends State<_BiometricForm> {
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Icon(Icons.monitor_weight, color: Colors.teal, size: 70),
+          const Icon(Icons.favorite, color: Colors.pink, size: 70),
           const SizedBox(height: 20),
           TextFormField(
             controller: _weightController,

@@ -255,8 +255,15 @@ class _MedicationFormState extends State<_MedicationForm> {
     return Form(
       key: _formKey,
       child: ListView(
+        // Clave estable para que los tests de widgets puedan identificar
+        // sin ambigüedad este `ListView` (hay varios `Scrollable` en el
+        // árbol: el `PageView` del `TabBarView`, los de cada campo de
+        // texto, etc.) y hacerle scroll hasta el botón "Guardar".
+        key: const Key('medicationFormListView'),
         padding: const EdgeInsets.all(20),
         children: [
+          const Icon(Icons.medication, color: Colors.teal, size: 70),
+          const SizedBox(height: 20),
           _MedicationItemInputRow(
             medicationNameController: _medicationNameController,
             quantityController: _quantityController,

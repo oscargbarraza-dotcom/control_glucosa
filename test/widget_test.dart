@@ -283,8 +283,13 @@ class _FakeUserProfileRepository implements UserProfileRepository {
 /// exitosamente, salvo que se pida simular un error mediante
 /// [failWith].
 class _FakeAuthRepository implements AuthRepository {
+  _FakeAuthRepository({this.supportsGoogleSignIn = true});
+
   final _controller = StreamController<AppUser?>.broadcast();
   AppUser? _currentUser;
+
+  @override
+  final bool supportsGoogleSignIn;
 
   /// Si no es `null`, el próximo método de inicio de sesión/registro
   /// lanzará esta excepción en lugar de "autenticar" al usuario.
@@ -694,6 +699,37 @@ void main() {
 
       expect(find.text('Arroz'), findsOneWidget);
 
+      // El ícono de cabecera del formulario empuja el botón "Guardar"
+      // fuera del viewport fijo de prueba, demasiado lejos para que el
+      // `ListView` ya lo haya construido (`ensureVisible` no sirve
+      // aquí: no puede desplazarse hacia un widget que todavía no
+      // existe). `scrollUntilVisible` desplaza el scroll en pasos
+      // pequeños, dejando que se vayan construyendo los widgets de más
+      // abajo, hasta encontrar el botón. Hay que indicar explícitamente
+      // el `ListView` del formulario (identificado por su `Key`): por
+      // defecto busca cualquier `Scrollable`, y aquí hay varios (el
+      // `PageView` interno del `TabBarView`, uno por cada
+      // `TextFormField` que envuelve su texto en un `Scrollable`
+      // horizontal, etc.).
+      await tester.scrollUntilVisible(
+        find.text('Guardar'),
+        200,
+        // `.first`: dentro del `ListView` también hay un `Scrollable`
+        // por cada `TextFormField` (para el scroll horizontal de su
+        // texto); el del propio `ListView` es el primero en el árbol.
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('mealFormListView')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      // `scrollUntilVisible` termina con un ajuste fino vía
+      // `Scrollable.ensureVisible` que no incluye un `pump`; sin este
+      // paso extra, el `tap` puede calcular el centro del botón con el
+      // layout todavía desactualizado (ver el mismo ajuste en los
+      // tests equivalentes de Medicamentos).
+      await tester.pump();
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
 
@@ -768,6 +804,28 @@ void main() {
 
     expect(find.text('Parche de nicotina'), findsOneWidget);
 
+    // El ícono de cabecera del formulario empuja el botón "Guardar"
+    // fuera del viewport fijo de prueba, demasiado lejos para que el
+    // `ListView` ya lo haya construido; ver el mismo ajuste (y su
+    // motivo) en el test equivalente de Comida.
+    await tester.scrollUntilVisible(
+      find.text('Guardar'),
+      200,
+      // `.first`: dentro del `ListView` también hay un `Scrollable` por
+      // cada `TextFormField` (para el scroll horizontal de su texto);
+      // el del propio `ListView` es el primero en el árbol.
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('medicationFormListView')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    // `scrollUntilVisible` termina con un ajuste fino vía
+    // `Scrollable.ensureVisible` que no incluye un `pump`; sin este
+    // paso extra, el `tap` calcula el centro del botón con el layout
+    // todavía desactualizado y falla el hit test.
+    await tester.pump();
     await tester.tap(find.text('Guardar'));
     await tester.pumpAndSettle();
 
@@ -823,6 +881,28 @@ void main() {
       expect(find.text('Metformina'), findsOneWidget);
       expect(find.textContaining('5.5'), findsOneWidget);
 
+      // El ícono de cabecera del formulario empuja el botón "Guardar"
+      // fuera del viewport fijo de prueba, demasiado lejos para que el
+      // `ListView` ya lo haya construido; ver el mismo ajuste (y su
+      // motivo) en el test equivalente de Comida.
+      await tester.scrollUntilVisible(
+        find.text('Guardar'),
+        200,
+        // `.first`: dentro del `ListView` también hay un `Scrollable`
+        // por cada `TextFormField` (para el scroll horizontal de su
+        // texto); el del propio `ListView` es el primero en el árbol.
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('medicationFormListView')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      // `scrollUntilVisible` termina con un ajuste fino vía
+      // `Scrollable.ensureVisible` que no incluye un `pump`; sin este
+      // paso extra, el `tap` calcula el centro del botón con el layout
+      // todavía desactualizado y falla el hit test.
+      await tester.pump();
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
 
@@ -1130,6 +1210,29 @@ void main() {
     expect(find.text('Iniciar sesión'), findsWidgets);
     expect(find.text('Continuar con Google'), findsOneWidget);
   });
+
+  testWidgets(
+    'Oculta Google Sign-In cuando el repositorio no lo soporta',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            authRepository: _FakeAuthRepository(
+              supportsGoogleSignIn: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Cuenta'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Iniciar sesión'), findsWidgets);
+      expect(find.text('Continuar con Google'), findsNothing);
+    },
+  );
 
   testWidgets(
     'Registrarse con correo y contraseña muestra la cuenta autenticada',

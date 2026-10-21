@@ -202,8 +202,15 @@ class _MealFormState extends State<_MealForm> {
     return Form(
       key: _formKey,
       child: ListView(
+        // Clave estable para que los tests de widgets puedan identificar
+        // sin ambigüedad este `ListView` (hay varios `Scrollable` en el
+        // árbol: el `PageView` del `TabBarView`, los de cada campo de
+        // texto, etc.) y hacerle scroll hasta el botón "Guardar".
+        key: const Key('mealFormListView'),
         padding: const EdgeInsets.all(20),
         children: [
+          const Icon(Icons.restaurant, color: Colors.orange, size: 70),
+          const SizedBox(height: 20),
           DropdownButtonFormField<MealType>(
             initialValue: _selectedType,
             // Evita que el botón se reduzca a su contenido mínimo; ver
