@@ -138,11 +138,22 @@ class MealGlucoseReminderCoordinator {
     }
   }
 
-  /// Revisa los recordatorios pendientes ya vencidos: para cada uno,
-  /// intenta encontrar una medición ya existente (o recién importada
-  /// desde el sensor/CGM, si [GlucoseImportRepository] está disponible)
-  /// cercana a [MealGlucoseReminder.dueAt]; si no la encuentra, lo deja
-  /// para acción manual.
+  /// Revisa los recordatorios pendientes ya vencidos.
+  ///
+  /// Para cada uno, si hay un sensor/CGM disponible
+  /// ([GlucoseImportRepository.isAvailable]), toma de inmediato su
+  /// lectura más reciente ([GlucoseImportRepository.fetchLatestMeasurement])
+  /// y la usa para resolver el recordatorio automáticamente, sin exigir
+  /// que esa lectura esté cerca de [MealGlucoseReminder.dueAt]: el
+  /// comentario guardado indica los minutos transcurridos desde la
+  /// comida (p. ej. "Medición automática a los 60 minutos."), no el
+  /// origen del sensor.
+  ///
+  /// Si no hay sensor disponible, o no devuelve ninguna lectura, se cae
+  /// al comportamiento de respaldo: buscar una medición ya existente (o
+  /// recién importada en bloque) cercana a [MealGlucoseReminder.dueAt]
+  /// dentro de [_autoResolveTolerance]. Si tampoco la encuentra, el
+  /// recordatorio queda para acción manual.
   Future<MealGlucoseReminderReviewResult> reviewPending() async {
     final now = _now();
     final pending = await _reminderRepository.getPendingDueBy(now);
@@ -153,40 +164,57 @@ class MealGlucoseReminderCoordinator {
       );
     }
 
-    await _tryImportFromSensor();
-    final candidates = await _glucoseRepository.getAllMeasurements();
-    final usedMeasurementIds = <int>{};
-
     final resolved = <MealGlucoseReminder>[];
-    final needsManualAction = <PendingMealGlucoseReminder>[];
+    final fallbackPending = <MealGlucoseReminder>[];
 
+    // Una sola lectura del sensor por pasada: si está disponible y
+    // devuelve un valor, se usa para resolver de inmediato cada
+    // recordatorio vencido (cada uno queda como un registro propio del
+    // historial, con su propio comentario según los minutos
+    // transcurridos).
+    final sensorMeasurement = await _fetchLatestFromSensorSafely();
     for (final reminder in pending) {
-      final match = _closestUnusedMatch(
-        candidates,
-        reminder.dueAt,
-        usedMeasurementIds,
-      );
-      if (match != null) {
-        usedMeasurementIds.add(match.id!);
-        await _reminderRepository.updateStatus(
-          reminder.id!,
-          status: MealGlucoseReminderStatus.resolvedAutomatically,
-          resolvedMeasurementId: match.id,
+      if (sensorMeasurement != null) {
+        resolved.add(await _autoResolveWithSensor(reminder, sensorMeasurement));
+      } else {
+        fallbackPending.add(reminder);
+      }
+    }
+
+    final needsManualAction = <PendingMealGlucoseReminder>[];
+    if (fallbackPending.isNotEmpty) {
+      await _tryImportFromSensor();
+      final candidates = await _glucoseRepository.getAllMeasurements();
+      final usedMeasurementIds = <int>{};
+
+      for (final reminder in fallbackPending) {
+        final match = _closestUnusedMatch(
+          candidates,
+          reminder.dueAt,
+          usedMeasurementIds,
         );
-        await _cancelNotification(reminder);
-        resolved.add(
-          reminder.copyWith(
+        if (match != null) {
+          usedMeasurementIds.add(match.id!);
+          await _reminderRepository.updateStatus(
+            reminder.id!,
             status: MealGlucoseReminderStatus.resolvedAutomatically,
             resolvedMeasurementId: match.id,
-          ),
-        );
-      } else {
-        needsManualAction.add(
-          PendingMealGlucoseReminder(
-            reminder: reminder,
-            isDaytime: isDaytime(now),
-          ),
-        );
+          );
+          await _cancelNotification(reminder);
+          resolved.add(
+            reminder.copyWith(
+              status: MealGlucoseReminderStatus.resolvedAutomatically,
+              resolvedMeasurementId: match.id,
+            ),
+          );
+        } else {
+          needsManualAction.add(
+            PendingMealGlucoseReminder(
+              reminder: reminder,
+              isDaytime: isDaytime(now),
+            ),
+          );
+        }
       }
     }
 
@@ -285,6 +313,68 @@ class MealGlucoseReminderCoordinator {
       // existentes en el historial local; el recordatorio simplemente
       // quedará para acción manual si no hay ninguna coincidencia.
     }
+  }
+
+  /// Lee la medición más reciente del sensor/CGM
+  /// ([GlucoseImportRepository.fetchLatestMeasurement]), sin exigir
+  /// cercanía a ningún [MealGlucoseReminder.dueAt] en particular.
+  ///
+  /// Devuelve `null` si no hay [GlucoseImportRepository] configurado, si
+  /// el sensor no está disponible, si no reporta ninguna lectura, o si
+  /// falla la lectura (en vez de propagar la excepción, para que
+  /// [reviewPending] caiga al comportamiento de respaldo).
+  Future<GlucoseMeasurement?> _fetchLatestFromSensorSafely() async {
+    final importRepository = _importRepository;
+    if (importRepository == null) {
+      return null;
+    }
+    if (!await importRepository.isAvailable()) {
+      return null;
+    }
+    try {
+      return await importRepository.fetchLatestMeasurement();
+    } on HealthImportException {
+      return null;
+    }
+  }
+
+  /// Resuelve [reminder] automáticamente con [sensorMeasurement],
+  /// persistiéndola como un nuevo registro del historial con un
+  /// comentario que deja constancia de los minutos transcurridos desde
+  /// la comida (p. ej. "Medición automática a los 60 minutos."),
+  /// reemplazando cualquier comentario que ya traiga la lectura del
+  /// sensor (como el nombre de la fuente).
+  ///
+  /// Construye una [GlucoseMeasurement] nueva (en vez de usar
+  /// [GlucoseMeasurement.copyWith]) para que cada recordatorio resuelto
+  /// obtenga su propio UUID: la misma lectura del sensor puede
+  /// reutilizarse para varios recordatorios de una misma comida (60 y
+  /// 90 minutos), y cada uno debe quedar como un registro
+  /// independiente del historial.
+  Future<MealGlucoseReminder> _autoResolveWithSensor(
+    MealGlucoseReminder reminder,
+    GlucoseMeasurement sensorMeasurement,
+  ) async {
+    final toSave = GlucoseMeasurement(
+      value: sensorMeasurement.value,
+      moment: sensorMeasurement.moment,
+      measuredAt: sensorMeasurement.measuredAt,
+      comment:
+          'Medición automática a los ${reminder.offsetMinutes} minutos.',
+    );
+    final saved = await _glucoseRepository.addMeasurement(toSave);
+
+    await _reminderRepository.updateStatus(
+      reminder.id!,
+      status: MealGlucoseReminderStatus.resolvedAutomatically,
+      resolvedMeasurementId: saved.id,
+    );
+    await _cancelNotification(reminder);
+
+    return reminder.copyWith(
+      status: MealGlucoseReminderStatus.resolvedAutomatically,
+      resolvedMeasurementId: saved.id,
+    );
   }
 
   /// Busca, entre [candidates], la medición no usada aún más cercana a

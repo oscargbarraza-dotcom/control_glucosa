@@ -98,6 +98,14 @@ class _FakeImportRepository implements GlucoseImportRepository {
   List<GlucoseMeasurement> toDiscover = const [];
   int importCallCount = 0;
 
+  /// Medición que devolverá [fetchLatestMeasurement], imitando la
+  /// lectura puntual más reciente disponible en el sensor/CGM. `null`
+  /// (su valor por defecto) imita que el sensor no tiene ninguna
+  /// lectura, forzando el respaldo basado en [toDiscover].
+  GlucoseMeasurement? latestMeasurement;
+  int fetchLatestCallCount = 0;
+  HealthImportException? fetchLatestFailWith;
+
   @override
   Future<bool> isAvailable() async => available;
 
@@ -118,7 +126,13 @@ class _FakeImportRepository implements GlucoseImportRepository {
   @override
   Future<GlucoseMeasurement?> fetchLatestMeasurement({
     Duration lookback = const Duration(hours: 4),
-  }) async => null;
+  }) async {
+    fetchLatestCallCount++;
+    if (fetchLatestFailWith != null) {
+      throw fetchLatestFailWith!;
+    }
+    return latestMeasurement;
+  }
 }
 
 /// Fake de [NotificationService] en memoria: registra qué ids quedan
@@ -237,6 +251,106 @@ void main() {
   });
 
   group('reviewPending', () {
+    test(
+      'con sensor disponible, resuelve usando su lectura más reciente '
+      'aunque no esté cerca del vencimiento, con comentario de minutos',
+      () async {
+        final reminderRepository = _FakeReminderRepository();
+        final glucoseRepository = _FakeGlucoseRepository();
+        final importRepository = _FakeImportRepository(glucoseRepository)
+          ..latestMeasurement = GlucoseMeasurement(
+            value: 138,
+            moment: GlucoseMoment.now,
+            // Muy lejos del vencimiento (9:00): no debe importar, pues
+            // con sensor disponible ya no se exige cercanía temporal.
+            measuredAt: DateTime(2026, 1, 1, 9, 50),
+            comment: 'Importado desde Health Connect.',
+          );
+        final coordinator = MealGlucoseReminderCoordinator(
+          reminderRepository: reminderRepository,
+          glucoseRepository: glucoseRepository,
+          importRepository: importRepository,
+          now: () => DateTime(2026, 1, 1, 10),
+        );
+        await reminderRepository.addReminders([
+          MealGlucoseReminder(
+            mealId: 1,
+            offsetMinutes: 60,
+            dueAt: DateTime(2026, 1, 1, 9),
+          ),
+        ]);
+
+        final result = await coordinator.reviewPending();
+
+        expect(result.needsManualAction, isEmpty);
+        expect(result.resolvedAutomatically.length, 1);
+        // No debió recurrir al respaldo de importación en bloque.
+        expect(importRepository.importCallCount, 0);
+
+        final saved = glucoseRepository.measurements.single;
+        expect(saved.value, 138);
+        expect(saved.comment, 'Medición automática a los 60 minutos.');
+        expect(
+          result.resolvedAutomatically.single.resolvedMeasurementId,
+          saved.id,
+        );
+      },
+    );
+
+    test(
+      'con sensor disponible, cada recordatorio pendiente en la misma '
+      'pasada genera su propio registro de medición (uuid propio)',
+      () async {
+        final reminderRepository = _FakeReminderRepository();
+        final glucoseRepository = _FakeGlucoseRepository();
+        final importRepository = _FakeImportRepository(glucoseRepository)
+          ..latestMeasurement = GlucoseMeasurement(
+            value: 142,
+            moment: GlucoseMoment.now,
+            measuredAt: DateTime(2026, 1, 1, 9, 50),
+          );
+        final coordinator = MealGlucoseReminderCoordinator(
+          reminderRepository: reminderRepository,
+          glucoseRepository: glucoseRepository,
+          importRepository: importRepository,
+          now: () => DateTime(2026, 1, 1, 10),
+        );
+        await reminderRepository.addReminders([
+          MealGlucoseReminder(
+            mealId: 1,
+            offsetMinutes: 60,
+            dueAt: DateTime(2026, 1, 1, 9),
+          ),
+          MealGlucoseReminder(
+            mealId: 1,
+            offsetMinutes: 90,
+            dueAt: DateTime(2026, 1, 1, 9, 30),
+          ),
+        ]);
+
+        final result = await coordinator.reviewPending();
+
+        expect(result.resolvedAutomatically.length, 2);
+        expect(glucoseRepository.measurements.length, 2);
+
+        final comments = glucoseRepository.measurements
+            .map((m) => m.comment)
+            .toSet();
+        expect(comments, {
+          'Medición automática a los 60 minutos.',
+          'Medición automática a los 90 minutos.',
+        });
+
+        final uuids = glucoseRepository.measurements
+            .map((m) => m.uuid)
+            .toSet();
+        expect(uuids.length, 2);
+
+        final ids = glucoseRepository.measurements.map((m) => m.id).toSet();
+        expect(ids.length, 2);
+      },
+    );
+
     test(
       'sin importRepository, los vencidos quedan para acción manual',
       () async {
@@ -459,6 +573,79 @@ void main() {
 
         expect(result.resolvedAutomatically.length, 1);
         expect(result.needsManualAction.length, 1);
+      },
+    );
+
+    test(
+      'cuando el sensor no reporta ninguna lectura, cae al respaldo '
+      '±10 min basado en mediciones existentes/importadas',
+      () async {
+        final reminderRepository = _FakeReminderRepository();
+        final glucoseRepository = _FakeGlucoseRepository();
+        final importRepository = _FakeImportRepository(glucoseRepository)
+          ..toDiscover = [
+            GlucoseMeasurement(
+              value: 150,
+              moment: GlucoseMoment.now,
+              measuredAt: DateTime(2026, 1, 1, 9, 3),
+            ),
+          ];
+        final coordinator = MealGlucoseReminderCoordinator(
+          reminderRepository: reminderRepository,
+          glucoseRepository: glucoseRepository,
+          importRepository: importRepository,
+          now: () => DateTime(2026, 1, 1, 10),
+        );
+        await reminderRepository.addReminders([
+          MealGlucoseReminder(
+            mealId: 1,
+            offsetMinutes: 60,
+            dueAt: DateTime(2026, 1, 1, 9),
+          ),
+        ]);
+
+        final result = await coordinator.reviewPending();
+
+        expect(importRepository.fetchLatestCallCount, 1);
+        expect(importRepository.importCallCount, 1);
+        expect(result.needsManualAction, isEmpty);
+        expect(result.resolvedAutomatically.length, 1);
+      },
+    );
+
+    test(
+      'si la lectura del sensor falla, cae al respaldo ±10 min sin '
+      'propagar la excepción',
+      () async {
+        final reminderRepository = _FakeReminderRepository();
+        final glucoseRepository = _FakeGlucoseRepository();
+        final importRepository = _FakeImportRepository(glucoseRepository)
+          ..fetchLatestFailWith = const HealthImportException('fallo')
+          ..toDiscover = [
+            GlucoseMeasurement(
+              value: 150,
+              moment: GlucoseMoment.now,
+              measuredAt: DateTime(2026, 1, 1, 9, 3),
+            ),
+          ];
+        final coordinator = MealGlucoseReminderCoordinator(
+          reminderRepository: reminderRepository,
+          glucoseRepository: glucoseRepository,
+          importRepository: importRepository,
+          now: () => DateTime(2026, 1, 1, 10),
+        );
+        await reminderRepository.addReminders([
+          MealGlucoseReminder(
+            mealId: 1,
+            offsetMinutes: 60,
+            dueAt: DateTime(2026, 1, 1, 9),
+          ),
+        ]);
+
+        final result = await coordinator.reviewPending();
+
+        expect(result.needsManualAction, isEmpty);
+        expect(result.resolvedAutomatically.length, 1);
       },
     );
   });
