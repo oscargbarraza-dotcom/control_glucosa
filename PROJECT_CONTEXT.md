@@ -1737,6 +1737,131 @@ Prioridad futura:
 
 # Historial de cambios
 
+## 2026-10-21 — Auto-resolución de recordatorios con la lectura más reciente del sensor
+
+`MealGlucoseReminderCoordinator.reviewPending()` cambia su estrategia de
+auto-resolución cuando hay un sensor/CGM disponible
+(`GlucoseImportRepository.isAvailable()`): antes exigía que la lectura
+estuviera dentro de ±10 minutos de `MealGlucoseReminder.dueAt`
+(`_autoResolveTolerance`) para auto-resolver; ahora, con sensor
+disponible, se toma siempre su lectura más reciente
+(`fetchLatestMeasurement()`) y se usa para resolver de inmediato **todos**
+los recordatorios vencidos de esa pasada, sin exigir ninguna cercanía
+temporal al vencimiento. Motivación: en la práctica, revisar el sensor
+justo en el minuto exacto del vencimiento es poco realista (el usuario
+abre la app cuando puede), y antes eso dejaba el recordatorio varado
+para acción manual aunque el sensor tuviera una lectura perfectamente
+válida (solo que tomada, por ejemplo, 25 minutos después).
+
+* `reminder.offsetMinutes` sigue viajando como metadato de cada
+  recordatorio: el comentario autogenerado (p. ej. "Medición automática
+  a los 60 minutos.") indica los minutos transcurridos desde la comida,
+  no el origen de la lectura ni cuán cerca estuvo del vencimiento.
+* Sin sensor disponible (`isAvailable()` devuelve `false`) o si
+  `fetchLatestMeasurement()` no devuelve ninguna lectura (`null`) o
+  lanza `HealthImportException`, `reviewPending()` cae al
+  comportamiento de respaldo previo sin cambios: importar en bloque
+  (`_tryImportFromSensor`, últimas 4 horas) y buscar, entre las
+  mediciones ya existentes en el historial local, la más cercana a
+  `dueAt` dentro de `_autoResolveTolerance` (±10 minutos), sin
+  reutilizar la misma medición para más de un recordatorio
+  (`usedMeasurementIds`).
+* Nuevo método privado `_fetchLatestFromSensorSafely()`: encapsula
+  `isAvailable()` + `fetchLatestMeasurement()`, devolviendo `null` en
+  cualquier escenario donde no haya una lectura usable (sin sensor,
+  sensor sin datos, o `HealthImportException`), para que
+  `reviewPending()` no necesite distinguir esos tres casos.
+* Nuevo método privado `_autoResolveWithSensor(reminder,
+  sensorMeasurement)`: construye una `GlucoseMeasurement` **nueva**
+  (no `copyWith` sobre `sensorMeasurement`) a partir del valor/momento/
+  fecha de la lectura del sensor, con el comentario de minutos
+  transcurridos, y la persiste con `GlucoseRepository.addMeasurement`.
+  Se usa `GlucoseMeasurement` nueva en vez de `copyWith` a propósito:
+  si varios recordatorios vencidos comparten la misma lectura del
+  sensor en una misma pasada de `reviewPending()` (ej. los
+  recordatorios de 60 y 90 minutos de la misma comida, revisados
+  juntos), cada uno debe quedar como un registro independiente del
+  historial, con su propio `uuid` — nunca se reutiliza el mismo
+  registro para dos recordatorios.
+* `reviewPending()` ahora separa los pendientes vencidos en dos listas
+  intermedias: `resolved` (ya resueltos, sea por sensor o por el
+  respaldo) y `fallbackPending` (sin lectura de sensor, deben pasar por
+  el flujo de respaldo). Si `fallbackPending` queda vacío no se llama a
+  `_tryImportFromSensor()` ni se consulta `getAllMeasurements()`, igual
+  que antes cuando no había nada que resolver por respaldo.
+* No hubo cambios en la firma pública de `MealGlucoseReminderCoordinator`
+  ni en `MealGlucoseReminderReviewResult`/`PendingMealGlucoseReminder`:
+  es un cambio interno de estrategia, transparente para `HomeScreen` y
+  para cualquier otro consumidor.
+* `test/services/meal_glucose_reminder_coordinator_test.dart` ganó
+  casos para: auto-resolución con una lectura del sensor lejana al
+  vencimiento (fuera de los ±10 minutos previos) cuando el sensor está
+  disponible; dos recordatorios vencidos de la misma comida resueltos
+  en la misma pasada con la misma lectura del sensor, verificando que
+  cada uno obtiene un registro de medición distinto; y que, sin sensor
+  disponible, se preserva el comportamiento de respaldo ±10 minutos
+  anterior sin modificaciones.
+* Validación: `flutter analyze` sin issues, `flutter test` 122/122 OK,
+  y `flutter build apk --release` exitoso (ver sección "Generación e
+  instalación manual de un APK release", más abajo en este mismo
+  historial) para confirmar que el cambio funciona también compilado
+  en modo release, no solo en los tests.
+
+## 2026-10-21 — Generación e instalación manual de un APK release (sin cable USB)
+
+Contexto: no había un celular Android conectado por USB visible desde
+este entorno (`flutter devices`/`adb devices` sin dispositivos, `adb`
+tampoco estaba en el `PATH` de la sesión). Se optó por generar un APK
+de release y transferirlo manualmente (WhatsApp/Drive/etc.) en vez de
+instalar por cable.
+
+* Se confirmó antes de compilar que `android/app/build.gradle.kts` ya
+  tiene el `release` firmado con las claves de **debug**
+  (`signingConfig = signingConfigs.getByName("debug")`, con un `TODO`
+  explícito para reemplazarlo por un keystore propio antes de publicar
+  en Google Play). Esto significa que el flujo de este punto **no
+  sirve para publicar en Play Store**, solo para instalar y probar en
+  dispositivos propios.
+* Comando usado: `flutter build apk --release`, con la salida
+  redirigida a un archivo de log temporal en el escritorio (el build
+  de Gradle tarda varios minutos y no conviene bloquear la sesión
+  esperando sin poder inspeccionar el progreso).
+* Duración real de este build (primera compilación de release de este
+  proyecto en esta máquina, con Firebase + `health` + R8/minificación):
+  **~7.2 minutos** (434.9 s reportados por Flutter) para la tarea
+  Gradle `assembleRelease`. Builds posteriores deberían ser más rápidos
+  gracias al cache de Gradle.
+* Resultado: `build/app/outputs/flutter-apk/app-release.apk` (≈55.1 MB).
+  Esa carpeta está excluida de git vía `.gitignore` (`/build/`), por lo
+  que el APK generado no se versiona ni se sube al repositorio; cada
+  quien debe generarlo localmente con el mismo comando cuando lo
+  necesite.
+* Instalación en el celular sin cable: subir el APK a un medio de
+  transferencia (Drive, WhatsApp "Mensajes guardados", Telegram,
+  etc.), descargarlo desde el celular, habilitar "Instalar apps
+  desconocidas" para la app usada para abrirlo (Android lo solicita
+  automáticamente la primera vez si no está activado) y abrir el
+  archivo para instalar. Al compartir el mismo `applicationId` que una
+  instalación previa, Android actualiza en vez de duplicar, preservando
+  los datos locales (SQLite).
+* Advertencias no bloqueantes observadas durante el build (no afectan
+  el resultado, documentadas por si se repiten en builds futuros):
+  * Warnings de Gradle sobre `System::load`/método restringido
+    (`net.rubygrapefruit.platform`), relacionados con la versión del
+    wrapper de Gradle, no con el código del proyecto.
+  * Warning de Flutter: los plugins `firebase_auth`, `firebase_core` y
+    `health` todavía aplican el Kotlin Gradle Plugin (KGP) de forma
+    clásica en vez del "Built-in Kotlin" que Flutter planea exigir a
+    futuro; no requiere acción mientras esos plugins no publiquen una
+    versión compatible.
+  * Warning del SDK de Android: "This version only understands SDK
+    XML versions up to 3 but an SDK XML file of version 4 was
+    encountered" (desalineación de versión entre Android Studio y las
+    command-line tools instaladas); no impidió el build.
+  * Nota del compilador Java sobre `PipelineStageHandlers.java` de
+    `cloud_firestore` usando operaciones "unchecked or unsafe"; es
+    código generado del plugin, no del proyecto.
+
 ## 2026-10-20 — Sincronización en tiempo real: push/pull automático en Android/iOS y visor de solo lectura en Windows/macOS
 
 Reemplaza por completo el respaldo manual (botones "Respaldar"/

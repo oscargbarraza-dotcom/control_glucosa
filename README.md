@@ -306,11 +306,18 @@ flutter test
 Estado actual de la revisión:
 
 - `flutter analyze`: **No issues found!**
-- `flutter test`: **All tests passed!** (99/99).
+- `flutter test`: **All tests passed!** (122/122).
 - `flutter build apk --debug`: compila correctamente (verificado tras
   integrar `firebase_auth`/`google_sign_in`/`cloud_firestore` y, más
   recientemente, `flutter_local_notifications`/`timezone`/
   `flutter_timezone`).
+- `flutter build apk --release`: compila correctamente (verificado
+  2026-10-21; genera
+  `build/app/outputs/flutter-apk/app-release.apk`, ≈55 MB, firmado con
+  las claves de **debug** —ver `TODO` en
+  `android/app/build.gradle.kts`—, por lo que sirve para instalar en
+  dispositivos propios pero no para publicar en Google Play sin
+  configurar antes un keystore de release propio).
 
 Incidencias previamente conocidas y ya resueltas:
 

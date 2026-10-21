@@ -3,7 +3,25 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
-> Actualizado el 2026-10-19 tras extender la **Fase B** a iOS: nueva
+> Actualizado el 2026-10-21: `MealGlucoseReminderCoordinator.reviewPending()`
+> cambia su estrategia de auto-resolución. Antes exigía que una medición
+> (ya existente o recién importada en bloque) estuviera dentro de ±10
+> minutos de `MealGlucoseReminder.dueAt`. Ahora, si hay un sensor/CGM
+> disponible, toma siempre su lectura más reciente
+> (`GlucoseImportRepository.fetchLatestMeasurement()`, vía el nuevo método
+> privado `_fetchLatestFromSensorSafely()`) y la usa para auto-resolver de
+> inmediato todos los recordatorios vencidos de esa pasada, sin exigir
+> cercanía temporal (nuevo método privado `_autoResolveWithSensor()`, que
+> genera un registro de medición propio —`uuid` independiente— por cada
+> recordatorio, aunque varios compartan la misma lectura del sensor). Solo
+> sin sensor disponible, o si no devuelve ninguna lectura, se mantiene el
+> comportamiento de respaldo ±10 minutos previo sin cambios. No hay
+> cambios en la firma pública de la clase ni en
+> `MealGlucoseReminderReviewResult`/`PendingMealGlucoseReminder`: es
+> transparente para `HomeScreen`. Ver "Historial de cambios" de
+> `PROJECT_CONTEXT.md` para el detalle completo.
+>
+> Cambio previo (2026-10-19): se extendió la **Fase B** a iOS: nueva
 > `DarwinNotificationService` en
 > `lib/services/darwin_notification_service.dart` (implementa
 > `NotificationService`, mismo contrato que `AndroidNotificationService`,
@@ -959,13 +977,21 @@ MealGlucoseReminderCoordinator               [lib/services/meal_glucose_reminder
  │     + _scheduleNotification(reminder) por cada uno (Fase B)
  ├─ rescheduleAllPending() → getAllPending() + _scheduleNotification()
  │     por cada uno (Fase B, red de seguridad al iniciar la app)
- ├─ reviewPending() → intenta importar CGM, auto-resuelve coincidencias
- │    (+ _cancelNotification() al auto-resolver) y devuelve
- │    PendingMealGlucoseReminder para acción manual
+ ├─ reviewPending() → _fetchLatestFromSensorSafely(): si hay lectura,
+ │    _autoResolveWithSensor() resuelve TODOS los vencidos de la pasada
+ │    (sin exigir cercanía a dueAt); si no, cae al respaldo: importa CGM
+ │    + busca coincidencias dentro de ±10 min (_closestUnusedMatch) y
+ │    devuelve PendingMealGlucoseReminder para los que no encontraron
+ │    ninguna (+ _cancelNotification() al auto-resolver)
  ├─ isDaytime(at) → true entre 07:00 (incl.) y 22:00 (excl.)
  ├─ dismiss(reminder) → status dismissed + _cancelNotification()
- └─ resolveManually(reminder, measurement) → guarda medición + status
-      resolvedManually + _cancelNotification()
+ ├─ resolveManually(reminder, measurement) → guarda medición + status
+ │     resolvedManually + _cancelNotification()
+ ├─ _fetchLatestFromSensorSafely() [privado] → isAvailable() +
+ │     fetchLatestMeasurement(); null si no hay sensor/lectura/falla
+ └─ _autoResolveWithSensor(reminder, sensorMeasurement) [privado] →
+      guarda GlucoseMeasurement NUEVA (uuid propio, no copyWith) +
+      status resolvedAutomatically + _cancelNotification()
 
 MealGlucoseReminderReviewResult / PendingMealGlucoseReminder
  └─ separan auto-resueltos y pendientes manuales, con flag isDaytime
