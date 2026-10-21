@@ -75,77 +75,86 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Registrar glucosa')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              const Icon(Icons.bloodtype, color: Colors.red, size: 70),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _glucoseController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Glucosa mg/dL',
-                  border: OutlineInputBorder(),
-                ),
-                validator: _validateGlucoseValue,
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          children: [
+            const Icon(Icons.bloodtype, color: Colors.red, size: 70),
+            const SizedBox(height: 20),
+            TextFormField(
+              controller: _glucoseController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Glucosa mg/dL',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 20),
-              DropdownButtonFormField<GlucoseMoment>(
-                initialValue: _selectedMoment,
-                style: const TextStyle(fontSize: 18, color: Colors.black87),
-                decoration: const InputDecoration(
-                  labelText: 'Momento de medición',
-                  border: OutlineInputBorder(),
-                ),
-                items: GlucoseMoment.values.map((moment) {
-                  final (icon, color) = _momentVisuals[moment]!;
-                  return DropdownMenuItem(
-                    value: moment,
-                    child: Row(
-                      children: [
-                        Icon(icon, color: color),
-                        const SizedBox(width: 12),
-                        Text(
+              validator: _validateGlucoseValue,
+            ),
+            const SizedBox(height: 20),
+            DropdownButtonFormField<GlucoseMoment>(
+              initialValue: _selectedMoment,
+              // El botón mide su contenido por defecto, y el `Row` con
+              // ícono + texto de las etiquetas más largas (p. ej.
+              // "Después desayuno") no entra en ese ancho mínimo, lo
+              // que producía un `RenderFlex overflowed` horizontal.
+              // `isExpanded` hace que el botón ocupe todo el ancho del
+              // campo, dándole espacio suficiente al `Row` interno.
+              isExpanded: true,
+              style: const TextStyle(fontSize: 18, color: Colors.black87),
+              decoration: const InputDecoration(
+                labelText: 'Momento de medición',
+                border: OutlineInputBorder(),
+              ),
+              items: GlucoseMoment.values.map((moment) {
+                final (icon, color) = _momentVisuals[moment]!;
+                return DropdownMenuItem(
+                  value: moment,
+                  child: Row(
+                    children: [
+                      Icon(icon, color: color),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
                           moment.label,
                           style: const TextStyle(fontSize: 18),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-                onChanged: (moment) {
-                  if (moment == null) {
-                    return;
-                  }
-                  setState(() {
-                    _selectedMoment = moment;
-                  });
-                },
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (moment) {
+                if (moment == null) {
+                  return;
+                }
+                setState(() {
+                  _selectedMoment = moment;
+                });
+              },
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _commentController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Comentario',
+                hintText: 'Opcional',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.note_alt),
               ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: _commentController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Comentario',
-                  hintText: 'Opcional',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.note_alt),
-                ),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _saveMeasurement,
+                child: const Text('Guardar'),
               ),
-              const SizedBox(height: 30),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _saveMeasurement,
-                  child: const Text('Guardar'),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
