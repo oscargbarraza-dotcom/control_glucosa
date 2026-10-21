@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/app_user.dart';
@@ -25,11 +26,12 @@ class FirebaseAuthRepository implements AuthRepository {
   bool _googleSignInInitialized = false;
 
   /// Inicializa el SDK de Google Sign-In una sola vez, con el
-  /// `serverClientId` (Web client ID) del proyecto Firebase. Debe
-  /// llamarse antes del primer [signInWithGoogle]; ver
-  /// `lib/main.dart`, donde se invoca junto con `Firebase.initializeApp`.
+  /// `serverClientId` (Web client ID) del proyecto Firebase. En una
+  /// plataforma no compatible no realiza ninguna operación. Debe llamarse
+  /// antes del primer [signInWithGoogle]; ver `lib/main.dart`, donde se
+  /// invoca junto con `Firebase.initializeApp`.
   Future<void> initializeGoogleSignIn({required String serverClientId}) async {
-    if (_googleSignInInitialized) {
+    if (!supportsGoogleSignIn || _googleSignInInitialized) {
       return;
     }
     await _googleSignIn.initialize(serverClientId: serverClientId);
@@ -43,6 +45,13 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   AppUser? get currentUser => _toAppUser(_firebaseAuth.currentUser);
+
+  @override
+  bool get supportsGoogleSignIn =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS;
 
   @override
   Future<AppUser> registerWithEmail({
@@ -78,6 +87,13 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   Future<AppUser?> signInWithGoogle() async {
+    if (!supportsGoogleSignIn) {
+      throw const AuthException(
+        'Iniciar sesión con Google no está disponible en esta plataforma. '
+        'Usa correo y contraseña.',
+      );
+    }
+
     GoogleSignInAccount account;
     try {
       account = await _googleSignIn.authenticate();
@@ -87,6 +103,15 @@ class FirebaseAuthRepository implements AuthRepository {
       }
       throw const AuthException(
         'No se pudo iniciar sesión con Google. Intenta nuevamente.',
+      );
+    } on UnimplementedError {
+      // `google_sign_in` no tiene implementación de plataforma en
+      // Windows ni Linux (ver `main.dart`, `_supportsGoogleSignIn`):
+      // ahí ni siquiera se llamó `initialize()`, así que `authenticate()`
+      // lanza este error en lugar de uno de `GoogleSignInException`.
+      throw const AuthException(
+        'Iniciar sesión con Google no está disponible en esta plataforma. '
+        'Usa correo y contraseña.',
       );
     }
 
@@ -121,7 +146,16 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {
-    await Future.wait([_firebaseAuth.signOut(), _googleSignIn.signOut()]);
+    await _firebaseAuth.signOut();
+    if (!supportsGoogleSignIn) {
+      return;
+    }
+    try {
+      await _googleSignIn.signOut();
+    } on UnimplementedError {
+      // Guarda defensiva por si falla el registro de la implementación
+      // federada en una plataforma que nominalmente declara soporte.
+    }
   }
 
   AppUser _requireAppUser(fb_auth.User? user) {

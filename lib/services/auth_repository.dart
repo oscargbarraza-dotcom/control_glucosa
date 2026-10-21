@@ -30,6 +30,12 @@ abstract class AuthRepository {
   /// Usuario autenticado en este momento, o `null` si no hay ninguno.
   AppUser? get currentUser;
 
+  /// Indica si Google Sign-In está implementado en la plataforma actual.
+  ///
+  /// Permite que la interfaz oculte el flujo en Windows/Linux sin acoplar
+  /// las pantallas al sistema operativo ni al plugin `google_sign_in`.
+  bool get supportsGoogleSignIn;
+
   /// Crea una cuenta nueva con correo y contraseña, y deja al usuario
   /// autenticado. Lanza [AuthException] con un mensaje legible si falla
   /// (por ejemplo, correo ya registrado o contraseña débil).

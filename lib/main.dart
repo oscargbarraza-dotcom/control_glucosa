@@ -24,14 +24,28 @@ import 'services/notification_service.dart';
 const String _googleSignInServerClientId =
     '371154041496-p2aekm10mkqjvpitmof0pvo3rkc7m8cs.apps.googleusercontent.com';
 
+/// `google_sign_in` solo tiene implementación de plataforma para Android,
+/// iOS, macOS y Web (ver https://pub.dev/packages/google_sign_in): en
+/// Windows y Linux no hay ningún `GoogleSignInPlatform` registrado, por lo
+/// que `GoogleSignIn.instance.initialize()` lanza `UnimplementedError` en
+/// esas plataformas. Evitamos llamarlo ahí para no crashear la app al
+/// arrancar. Además, [FirebaseAuthRepository.supportsGoogleSignIn] permite
+/// a [AuthScreen] ocultar el botón en plataformas no compatibles; la guarda
+/// defensiva de `signInWithGoogle` conserva un error legible si el método se
+/// invoca directamente de todas formas.
+bool get _supportsGoogleSignIn =>
+    Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   final authRepository = FirebaseAuthRepository();
-  await authRepository.initializeGoogleSignIn(
-    serverClientId: _googleSignInServerClientId,
-  );
+  if (_supportsGoogleSignIn) {
+    await authRepository.initializeGoogleSignIn(
+      serverClientId: _googleSignInServerClientId,
+    );
+  }
 
   runApp(
     SeguimientoGlucosaApp(

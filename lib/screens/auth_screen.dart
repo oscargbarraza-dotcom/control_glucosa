@@ -336,23 +336,25 @@ class _AuthFormState extends State<_AuthForm> {
                 onPressed: _isSubmitting ? null : _sendPasswordReset,
                 child: const Text('¿Olvidaste tu contraseña?'),
               ),
-            const SizedBox(height: 10),
-            const Row(
-              children: [
-                Expanded(child: Divider()),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Text('o', style: TextStyle(color: Colors.black54)),
-                ),
-                Expanded(child: Divider()),
-              ],
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: _isSubmitting ? null : _submitGoogleSignIn,
-              icon: const Icon(Icons.g_mobiledata, size: 28),
-              label: const Text('Continuar con Google'),
-            ),
+            if (widget.repository.supportsGoogleSignIn) ...[
+              const SizedBox(height: 10),
+              const Row(
+                children: [
+                  Expanded(child: Divider()),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('o', style: TextStyle(color: Colors.black54)),
+                  ),
+                  Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _isSubmitting ? null : _submitGoogleSignIn,
+                icon: const Icon(Icons.g_mobiledata, size: 28),
+                label: const Text('Continuar con Google'),
+              ),
+            ],
           ],
         ),
       ),
