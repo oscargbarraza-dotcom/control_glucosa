@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/glucose_measurement.dart';
+import '../services/glucose_import_repository.dart';
 
 /// Datos visuales (icono y color) asociados a cada [GlucoseMoment].
 const Map<GlucoseMoment, (IconData, Color)> _momentVisuals = {
@@ -20,7 +21,14 @@ const Map<GlucoseMoment, (IconData, Color)> _momentVisuals = {
 /// Al guardar, retorna un [GlucoseMeasurement] a la pantalla anterior
 /// mediante `Navigator.pop`.
 class GlucoseScreen extends StatefulWidget {
-  const GlucoseScreen({super.key});
+  const GlucoseScreen({super.key, this.importRepository});
+
+  /// Repositorio de importación manual desde sensores/CGM (Health
+  /// Connect/Apple Health), usado por el botón "Tomar desde sensor"
+  /// para prellenar el valor sin que el usuario tenga que escribirlo.
+  /// Si es `null`, el botón no se muestra (p. ej. en tests que no
+  /// necesitan probar esa funcionalidad).
+  final GlucoseImportRepository? importRepository;
 
   @override
   State<GlucoseScreen> createState() => _GlucoseScreenState();
@@ -32,12 +40,70 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
   final TextEditingController _commentController = TextEditingController();
 
   GlucoseMoment _selectedMoment = GlucoseMoment.now;
+  bool _isFetchingFromSensor = false;
 
   @override
   void dispose() {
     _glucoseController.dispose();
     _commentController.dispose();
     super.dispose();
+  }
+
+  Future<void> _takeFromSensor() async {
+    final importRepository = widget.importRepository;
+    if (importRepository == null || _isFetchingFromSensor) {
+      return;
+    }
+
+    setState(() {
+      _isFetchingFromSensor = true;
+    });
+
+    String? errorMessage;
+    GlucoseMeasurement? measurement;
+    try {
+      final available = await importRepository.isAvailable();
+      if (!available) {
+        errorMessage =
+            'Health Connect no está disponible en este dispositivo. '
+            'Instálalo desde la tienda de aplicaciones e intenta '
+            'nuevamente.';
+      } else {
+        final granted = await importRepository.requestPermission();
+        if (!granted) {
+          errorMessage = 'Permiso de lectura de glucosa denegado.';
+        } else {
+          measurement = await importRepository.fetchLatestMeasurement();
+          if (measurement == null) {
+            errorMessage = 'El sensor no tiene mediciones recientes.';
+          }
+        }
+      }
+    } on HealthImportException catch (e) {
+      errorMessage = e.message;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFetchingFromSensor = false;
+        });
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (measurement != null) {
+      _glucoseController.text = measurement.value.toString();
+      if (measurement.comment != null) {
+        _commentController.text = measurement.comment!;
+      }
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(errorMessage!)));
   }
 
   String? _validateGlucoseValue(String? input) {
@@ -74,7 +140,26 @@ class _GlucoseScreenState extends State<GlucoseScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Registrar glucosa')),
+      appBar: AppBar(
+        title: const Text('Registrar glucosa'),
+        actions: [
+          if (widget.importRepository != null)
+            IconButton(
+              icon: _isFetchingFromSensor
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.sensors),
+              tooltip: 'Tomar desde sensor',
+              onPressed: _isFetchingFromSensor ? null : _takeFromSensor,
+            ),
+        ],
+      ),
       body: Form(
         key: _formKey,
         child: ListView(

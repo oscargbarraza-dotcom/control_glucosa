@@ -123,6 +123,49 @@ class HealthGlucoseImportRepository implements GlucoseImportRepository {
     return imported;
   }
 
+  @override
+  Future<GlucoseMeasurement?> fetchLatestMeasurement({
+    Duration lookback = const Duration(hours: 4),
+  }) async {
+    await _ensureConfigured();
+
+    List<HealthDataPoint> points;
+    try {
+      points = await _health.getHealthDataFromTypes(
+        types: const [_type],
+        preferredUnits: const {_type: HealthDataUnit.MILLIGRAM_PER_DECILITER},
+        startTime: DateTime.now().subtract(lookback),
+        endTime: DateTime.now(),
+      );
+    } catch (e) {
+      throw const HealthImportException(
+        'No se pudieron leer las mediciones de glucosa. Verifica el '
+        'permiso concedido e intenta nuevamente.',
+      );
+    }
+
+    HealthDataPoint? latest;
+    for (final point in points) {
+      if (point.value is! NumericHealthValue) {
+        continue;
+      }
+      if (latest == null || point.dateFrom.isAfter(latest.dateFrom)) {
+        latest = point;
+      }
+    }
+    if (latest == null) {
+      return null;
+    }
+
+    final value = latest.value as NumericHealthValue;
+    return GlucoseMeasurement(
+      value: value.numericValue.round(),
+      moment: GlucoseMoment.now,
+      measuredAt: latest.dateFrom,
+      comment: 'Tomado desde ${latest.sourceName}.',
+    );
+  }
+
   /// Clave de deduplicación: no existe un identificador estable
   /// compartido entre el historial local (asignado por SQLite) y la
   /// plataforma de salud, así que se usa la combinación de fecha/hora

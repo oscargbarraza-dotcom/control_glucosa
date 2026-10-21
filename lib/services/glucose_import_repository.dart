@@ -1,3 +1,5 @@
+import '../models/glucose_measurement.dart';
+
 /// Excepción de importación desde sensores/CGM con un mensaje ya listo
 /// para mostrar al usuario (en español, sin exponer detalles internos
 /// del SDK).
@@ -51,4 +53,20 @@ abstract class GlucoseImportRepository {
   /// Lanza [HealthImportException] si la plataforma de salud no está
   /// disponible, si el permiso fue denegado, o si falla la lectura.
   Future<int> importMeasurements({required DateTime since});
+
+  /// Lee la medición de glucosa más reciente registrada en la
+  /// plataforma de salud (dentro de [lookback] hacia atrás desde ahora),
+  /// **sin** agregarla al historial local.
+  ///
+  /// Pensado para el botón "Tomar desde sensor" de [GlucoseScreen]: a
+  /// diferencia de [importMeasurements] (que persiste todo lo nuevo de
+  /// una vez), esto solo consulta un valor puntual para prellenar el
+  /// formulario, dejando que el usuario decida si lo guarda.
+  ///
+  /// Devuelve `null` si no hay ninguna medición dentro de [lookback].
+  /// Lanza [HealthImportException] si la plataforma de salud no está
+  /// disponible, si el permiso fue denegado, o si falla la lectura.
+  Future<GlucoseMeasurement?> fetchLatestMeasurement({
+    Duration lookback = const Duration(hours: 4),
+  });
 }

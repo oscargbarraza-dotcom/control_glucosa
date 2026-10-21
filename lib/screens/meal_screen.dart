@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/food.dart';
+import '../models/glucose_measurement.dart';
 import '../models/meal.dart';
+import '../services/glucose_import_repository.dart';
+import '../services/glucose_repository.dart';
 import '../services/meal_glucose_reminder_coordinator.dart';
 import '../services/meal_repository.dart';
+import 'glucose_screen.dart';
 
 /// Pantalla del módulo de Comidas, con dos pestañas: **Registrar** (nueva
 /// comida) e **Historial** (comidas ya guardadas).
@@ -18,6 +22,8 @@ class MealScreen extends StatefulWidget {
     super.key,
     required this.repository,
     this.reminderCoordinator,
+    this.glucoseRepository,
+    this.glucoseImportRepository,
   });
 
   /// Repositorio desde el que se cargan y guardan las comidas.
@@ -29,6 +35,20 @@ class MealScreen extends StatefulWidget {
   /// recordatorios (por ejemplo, en tests que no necesitan probar esta
   /// funcionalidad).
   final MealGlucoseReminderCoordinator? reminderCoordinator;
+
+  /// Repositorio de mediciones de glucosa. Si no es `null`, tras guardar
+  /// una comida se ofrece registrar de inmediato una medición (además
+  /// de los recordatorios a 60/90 minutos de [reminderCoordinator], que
+  /// cubren el seguimiento posterior). Si es `null`, no se ofrece esta
+  /// opción (por ejemplo, en tests que no necesitan probar esta
+  /// funcionalidad).
+  final GlucoseRepository? glucoseRepository;
+
+  /// Repositorio de importación manual desde sensores/CGM, reenviado a
+  /// [GlucoseScreen] cuando el usuario elige registrar una medición
+  /// justo después de guardar la comida. Si es `null`, esa pantalla no
+  /// muestra el botón "Tomar desde sensor".
+  final GlucoseImportRepository? glucoseImportRepository;
 
   @override
   State<MealScreen> createState() => _MealScreenState();
@@ -69,6 +89,62 @@ class _MealScreenState extends State<MealScreen>
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Comida guardada.')));
+
+    await _offerGlucoseMeasurement();
+  }
+
+  /// Tras guardar una comida, pregunta si se quiere registrar de
+  /// inmediato una medición de glucosa. Es un complemento inmediato a
+  /// los recordatorios automáticos a 60/90 minutos
+  /// ([MealGlucoseReminderCoordinator]): algunas personas prefieren
+  /// medir antes de comer, o simplemente ya tienen el sensor a mano.
+  ///
+  /// No hace nada si no se proveyó [MealScreen.glucoseRepository] (por
+  /// ejemplo, en tests que no necesitan probar esta funcionalidad).
+  Future<void> _offerGlucoseMeasurement() async {
+    final glucoseRepository = widget.glucoseRepository;
+    if (glucoseRepository == null || !mounted) {
+      return;
+    }
+
+    final wantsToMeasure = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.bloodtype, color: Colors.red),
+        title: const Text('¿Registrar tu glucosa?'),
+        content: const Text(
+          'Puedes registrar ahora una medición de glucosa asociada a '
+          'esta comida.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Ahora no'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Medir glucosa'),
+          ),
+        ],
+      ),
+    );
+
+    if (wantsToMeasure != true || !mounted) {
+      return;
+    }
+
+    final measurement = await Navigator.push<GlucoseMeasurement>(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            GlucoseScreen(importRepository: widget.glucoseImportRepository),
+      ),
+    );
+    if (measurement == null) {
+      return;
+    }
+
+    await glucoseRepository.addMeasurement(measurement);
   }
 
   @override

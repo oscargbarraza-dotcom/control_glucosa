@@ -444,6 +444,12 @@ class _FakeGlucoseImportRepository implements GlucoseImportRepository {
   HealthImportException? failWith;
   int importCallCount = 0;
 
+  /// Medición que devolverá [fetchLatestMeasurement], imitando una
+  /// lectura puntual disponible en el sensor/CGM para el botón "Tomar
+  /// desde sensor" de `GlucoseScreen`.
+  GlucoseMeasurement? latestMeasurement;
+  int fetchLatestCallCount = 0;
+
   @override
   Future<bool> isAvailable() async => available;
 
@@ -462,6 +468,17 @@ class _FakeGlucoseImportRepository implements GlucoseImportRepository {
       await glucoseRepository.addMeasurement(measurement);
     }
     return toImport.length;
+  }
+
+  @override
+  Future<GlucoseMeasurement?> fetchLatestMeasurement({
+    Duration lookback = const Duration(hours: 4),
+  }) async {
+    if (failWith != null) {
+      throw failWith!;
+    }
+    fetchLatestCallCount++;
+    return latestMeasurement;
   }
 }
 
@@ -551,6 +568,127 @@ void main() {
     expect(find.text('120 mg/dL'), findsOneWidget);
     expect(repository.stored?.value, 120);
   });
+
+  testWidgets(
+    'Sin importRepository, GlucoseScreen no muestra el botón de tomar '
+    'desde sensor',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomeScreen(repository: _FakeGlucoseRepository())),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Glucosa actual'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Tomar desde sensor'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Tomar desde sensor prellena el formulario con el valor leído',
+    (WidgetTester tester) async {
+      final glucoseRepository = _FakeGlucoseRepository();
+      final importRepository = _FakeGlucoseImportRepository(
+        glucoseRepository,
+      )..latestMeasurement = GlucoseMeasurement(
+        value: 110,
+        moment: GlucoseMoment.now,
+        measuredAt: DateTime.now(),
+        comment: 'Tomado desde Health Connect.',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: glucoseRepository,
+            importRepository: importRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Glucosa actual'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Tomar desde sensor'));
+      await tester.pumpAndSettle();
+
+      expect(importRepository.fetchLatestCallCount, 1);
+      expect(find.text('110'), findsOneWidget);
+      expect(find.text('Tomado desde Health Connect.'), findsOneWidget);
+
+      // El valor prellenado se puede guardar igual que uno manual.
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(glucoseRepository.stored?.value, 110);
+    },
+  );
+
+  testWidgets(
+    'Tomar desde sensor sin mediciones recientes muestra un mensaje',
+    (WidgetTester tester) async {
+      final glucoseRepository = _FakeGlucoseRepository();
+      final importRepository = _FakeGlucoseImportRepository(
+        glucoseRepository,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: glucoseRepository,
+            importRepository: importRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Glucosa actual'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Tomar desde sensor'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('El sensor no tiene mediciones recientes.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Si Health Connect no está disponible, "Tomar desde sensor" informa '
+    'sin leer el sensor',
+    (WidgetTester tester) async {
+      final glucoseRepository = _FakeGlucoseRepository();
+      final importRepository = _FakeGlucoseImportRepository(
+        glucoseRepository,
+      )..available = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: glucoseRepository,
+            importRepository: importRepository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Glucosa actual'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Tomar desde sensor'));
+      await tester.pumpAndSettle();
+
+      expect(importRepository.fetchLatestCallCount, 0);
+      expect(
+        find.textContaining('Health Connect no está disponible'),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('Tocar Historial navega a HistoryScreen y lista las mediciones', (
     WidgetTester tester,
@@ -740,6 +878,131 @@ void main() {
       // Tras guardar, la pestaña cambia automáticamente a "Historial".
       expect(find.text('Desayuno'), findsOneWidget);
       expect(find.textContaining('Arroz (1 taza)'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Tras guardar una comida, se ofrece registrar una medición de '
+    'glucosa',
+    (WidgetTester tester) async {
+      final mealRepository = _FakeMealRepository();
+      final glucoseRepository = _FakeGlucoseRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: glucoseRepository,
+            mealRepository: mealRepository,
+            reminderRepository: _FakeMealGlucoseReminderRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Comida'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Alimento'),
+        'Arroz',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Cantidad'),
+        '1 taza',
+      );
+      await tester.tap(find.byTooltip('Agregar alimento'));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Guardar'),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('mealFormListView')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pump();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Comida guardada.'), findsOneWidget);
+
+      // Además del snackbar de confirmación, se ofrece registrar de
+      // inmediato una medición de glucosa asociada a la comida.
+      expect(find.text('¿Registrar tu glucosa?'), findsOneWidget);
+
+      await tester.tap(find.text('Ahora no'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('¿Registrar tu glucosa?'), findsNothing);
+      expect(glucoseRepository.stored, isNull);
+    },
+  );
+
+  testWidgets(
+    'Elegir "Medir glucosa" tras guardar una comida navega a '
+    'GlucoseScreen y guarda la medición',
+    (WidgetTester tester) async {
+      final mealRepository = _FakeMealRepository();
+      final glucoseRepository = _FakeGlucoseRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: glucoseRepository,
+            mealRepository: mealRepository,
+            reminderRepository: _FakeMealGlucoseReminderRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Comida'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Alimento'),
+        'Arroz',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Cantidad'),
+        '1 taza',
+      );
+      await tester.tap(find.byTooltip('Agregar alimento'));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Guardar'),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('mealFormListView')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pump();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Medir glucosa'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Registrar glucosa'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextFormField), '130');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(glucoseRepository.stored?.value, 130);
+
+      // `GlucoseScreen` solo retorna a `MealScreen` (de donde se abrió);
+      // al volver manualmente desde ahí a `HomeScreen`, la tarjeta
+      // principal refleja la medición recién guardada.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(find.text('130 mg/dL'), findsOneWidget);
     },
   );
 

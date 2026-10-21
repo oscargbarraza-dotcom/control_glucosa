@@ -114,6 +114,11 @@ class _FakeImportRepository implements GlucoseImportRepository {
     }
     return discovered.length;
   }
+
+  @override
+  Future<GlucoseMeasurement?> fetchLatestMeasurement({
+    Duration lookback = const Duration(hours: 4),
+  }) async => null;
 }
 
 /// Fake de [NotificationService] en memoria: registra qué ids quedan

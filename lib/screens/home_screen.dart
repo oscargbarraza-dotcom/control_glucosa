@@ -416,7 +416,10 @@ class _HomeScreenState extends State<HomeScreen> {
   ) async {
     final result = await Navigator.push<GlucoseMeasurement>(
       context,
-      MaterialPageRoute(builder: (context) => const GlucoseScreen()),
+      MaterialPageRoute(
+        builder: (context) =>
+            GlucoseScreen(importRepository: _importRepository),
+      ),
     );
 
     if (result == null) {
@@ -447,7 +450,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openGlucoseScreen() async {
     final result = await Navigator.push<GlucoseMeasurement>(
       context,
-      MaterialPageRoute(builder: (context) => const GlucoseScreen()),
+      MaterialPageRoute(
+        builder: (context) =>
+            GlucoseScreen(importRepository: _importRepository),
+      ),
     );
 
     if (result == null) {
@@ -476,16 +482,24 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openMealScreen() {
-    Navigator.push(
+  Future<void> _openMealScreen() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => MealScreen(
           repository: _mealRepository,
           reminderCoordinator: _reminderCoordinator,
+          glucoseRepository: _repository,
+          glucoseImportRepository: _importRepository,
         ),
       ),
     );
+
+    // `MealScreen` puede haber agregado una medición de glucosa (vía el
+    // diálogo "¿Registrar tu glucosa?"), sin avisar a `HomeScreen`
+    // directamente; se recarga al volver para que la tarjeta principal
+    // la refleje de inmediato si corresponde.
+    await _loadLastMeasurement();
   }
 
   void _openMedicationScreen() {
