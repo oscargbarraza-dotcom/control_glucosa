@@ -590,6 +590,9 @@ class _ProfileFormState extends State<_ProfileForm> {
           const SizedBox(height: 20),
           DropdownButtonFormField<BiologicalSex>(
             initialValue: _biologicalSex,
+            // Evita que el botón se reduzca a su contenido mínimo; ver
+            // el mismo ajuste (y su motivo) en GlucoseScreen.
+            isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Sexo biológico',
               hintText: 'Opcional',

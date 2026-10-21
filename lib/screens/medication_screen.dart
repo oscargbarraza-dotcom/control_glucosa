@@ -354,6 +354,9 @@ class _MedicationItemInputRow extends StatelessWidget {
             Expanded(
               child: DropdownButtonFormField<DoseUnit>(
                 initialValue: selectedUnit,
+                // Evita que el botón se reduzca a su contenido mínimo;
+                // ver el mismo ajuste (y su motivo) en GlucoseScreen.
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Unidad',
                   border: OutlineInputBorder(),

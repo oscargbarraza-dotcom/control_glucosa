@@ -206,6 +206,9 @@ class _MealFormState extends State<_MealForm> {
         children: [
           DropdownButtonFormField<MealType>(
             initialValue: _selectedType,
+            // Evita que el botón se reduzca a su contenido mínimo; ver
+            // el mismo ajuste (y su motivo) en GlucoseScreen.
+            isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Tipo de comida',
               border: OutlineInputBorder(),
