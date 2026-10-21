@@ -101,6 +101,15 @@ dev_dependencies:
   # dispositivo).
   sqflite_common_ffi: ^2.4.4
 
+  # Generan el icono de la app (gota de sangre, símbolo de
+  # concienciación sobre diabetes) y el splash screen nativo a partir
+  # de los PNG en `assets/icon/` (ver configuración más abajo y
+  # `tool/generate_icon_assets.py`). Solo se usan en tiempo de
+  # desarrollo (`dart run flutter_launcher_icons` / `dart run
+  # flutter_native_splash:create`); no quedan en el binario final.
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.8
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -116,6 +125,8 @@ flutter:
   # assets:
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/icon/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -142,3 +153,44 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Configuración de `flutter_launcher_icons` (icono de la app en todas las
+# plataformas). Los PNG de origen se generan con
+# `python tool/generate_icon_assets.py`; luego se aplican con:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  min_sdk_android: 26 # Coincide con minSdk real (android/app/build.gradle.kts).
+  # El icono base tiene esquinas con canal alfa (el círculo azul no
+  # cubre del todo un lienzo cuadrado); la App Store rechaza íconos
+  # con transparencia, así que se rellena con el mismo azul del fondo.
+  remove_alpha_ios: true
+  background_color_ios: "#0D47A1"
+  adaptive_icon_background: "assets/icon/icon_background.png"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  web:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    background_color: "#0D47A1"
+    theme_color: "#0D47A1"
+  windows:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: "assets/icon/icon.png"
+
+# Configuración de `flutter_native_splash` (pantalla de bienvenida
+# nativa que se muestra mientras Flutter termina de cargar, antes de
+# que `SplashScreen` -definida en `lib/screens/splash_screen.dart`-
+# tome el control). Se aplica con:
+#   dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#0D47A1"
+  image: "assets/icon/icon_foreground.png"
+  android_12:
+    color: "#0D47A1"
+    image: "assets/icon/icon_foreground.png"

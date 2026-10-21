@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'firebase_options.dart';
 import 'screens/cloud_viewer_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/android_notification_service.dart';
 import 'services/darwin_notification_service.dart';
 import 'services/firebase_auth_repository.dart';
@@ -86,8 +87,48 @@ class SeguimientoGlucosaApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Seguimiento Glucosa',
-      theme: ThemeData(primarySwatch: Colors.deepPurple),
-      home: _homeForCurrentPlatform(),
+      theme: _buildTheme(),
+      home: SplashScreen(
+        nextScreenBuilder: (context) => _homeForCurrentPlatform(),
+      ),
+    );
+  }
+
+  /// Tema de la app: azul "concienciación de diabetes" como color base
+  /// (coherente con el icono y el splash, ver
+  /// `tool/generate_icon_assets.py`), con rojo como color secundario
+  /// reservado para la gota/alertas de glucosa.
+  ThemeData _buildTheme() {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF0D47A1),
+      secondary: Colors.red,
+    );
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: const Color(0xFFF2F6FC),
+      appBarTheme: AppBarTheme(
+        backgroundColor: colorScheme.primary,
+        foregroundColor: Colors.white,
+        centerTitle: true,
+        elevation: 0,
+      ),
+      cardTheme: CardThemeData(
+        elevation: 3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: colorScheme.primary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
     );
   }
 

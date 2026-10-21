@@ -522,13 +522,13 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: const Text(
           'Seguimiento Glucosa',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.account_circle_outlined),
@@ -537,45 +537,83 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _GlucoseCard(
-              measurement: _lastMeasurement,
-              isLoading: _isLoading,
-              onTap: _openGlucoseScreen,
-            ),
-            const SizedBox(height: 20),
-            MenuButton(
-              icon: Icons.restaurant,
-              title: 'Comida',
-              onTap: _openMealScreen,
-            ),
-            MenuButton(
-              icon: Icons.medication,
-              title: 'Medicamentos',
-              onTap: _openMedicationScreen,
-            ),
-            MenuButton(
-              icon: Icons.favorite,
-              title: 'Biometría',
-              onTap: _openBiometricScreen,
-            ),
-            MenuButton(
-              icon: Icons.show_chart,
-              title: 'Historial',
-              onTap: _openHistoryScreen,
-            ),
-          ],
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            // El degradado solo cubre la cabecera (franja superior);
+            // el resto de la pantalla se funde al fondo claro del tema.
+            colors: [
+              Theme.of(context).colorScheme.primary,
+              Theme.of(context).scaffoldBackgroundColor,
+            ],
+            stops: const [0.0, 0.32],
+          ),
+        ),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            children: [
+              _GlucoseCard(
+                measurement: _lastMeasurement,
+                isLoading: _isLoading,
+                onTap: _openGlucoseScreen,
+              ),
+              const SizedBox(height: 24),
+              MenuButton(
+                icon: Icons.restaurant,
+                title: 'Comida',
+                color: Colors.orange,
+                onTap: _openMealScreen,
+              ),
+              MenuButton(
+                icon: Icons.medication,
+                title: 'Medicamentos',
+                color: Colors.teal,
+                onTap: _openMedicationScreen,
+              ),
+              MenuButton(
+                icon: Icons.favorite,
+                title: 'Biometría',
+                color: Colors.pink,
+                onTap: _openBiometricScreen,
+              ),
+              MenuButton(
+                icon: Icons.show_chart,
+                title: 'Historial',
+                color: Colors.indigo,
+                onTap: _openHistoryScreen,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
+/// Rango clínico aproximado de un valor de glucosa en mg/dL, usado solo
+/// para colorear [_GlucoseCard] (no sustituye ningún criterio médico).
+enum _GlucoseRange { low, normal, high }
+
+extension on int {
+  _GlucoseRange get glucoseRange {
+    if (this < 70) {
+      return _GlucoseRange.low;
+    }
+    if (this > 180) {
+      return _GlucoseRange.high;
+    }
+    return _GlucoseRange.normal;
+  }
+}
+
 /// Tarjeta que muestra la última medición de glucosa registrada, o un
 /// marcador `--` cuando todavía no hay ninguna (o está cargando).
+///
+/// El degradado de fondo cambia según [_GlucoseRange] (bajo/normal/alto)
+/// para dar una señal visual inmediata, además del valor numérico.
 class _GlucoseCard extends StatelessWidget {
   const _GlucoseCard({
     required this.measurement,
@@ -587,25 +625,53 @@ class _GlucoseCard extends StatelessWidget {
   final bool isLoading;
   final VoidCallback onTap;
 
+  static const _rangeColors = {
+    _GlucoseRange.low: [Color(0xFFFFB74D), Color(0xFFEF6C00)],
+    _GlucoseRange.normal: [Color(0xFF66BB6A), Color(0xFF2E7D32)],
+    _GlucoseRange.high: [Color(0xFFEF5350), Color(0xFFB71C1C)],
+  };
+
+  static const _neutralColors = [Color(0xFF90A4AE), Color(0xFF546E7A)];
+
   @override
   Widget build(BuildContext context) {
-    final displayValue = measurement == null
-        ? '-- mg/dL'
-        : '${measurement!.value} mg/dL';
+    final value = measurement?.value;
+    final displayValue = value == null ? '-- mg/dL' : '$value mg/dL';
+    final gradientColors = value == null
+        ? _neutralColors
+        : _rangeColors[value.glucoseRange]!;
 
     return GestureDetector(
       onTap: onTap,
-      child: Card(
-        elevation: 4,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradientColors,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: gradientColors.last.withValues(alpha: 0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(22),
           child: Column(
             children: [
-              const Icon(Icons.bloodtype, size: 45, color: Colors.red),
+              const Icon(Icons.bloodtype, size: 45, color: Colors.white),
               const SizedBox(height: 10),
               const Text(
                 'Glucosa actual',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 10),
               if (isLoading)
@@ -614,7 +680,10 @@ class _GlucoseCard extends StatelessWidget {
                   child: SizedBox(
                     width: 24,
                     height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                    ),
                   ),
                 )
               else
@@ -623,13 +692,14 @@ class _GlucoseCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 38,
                     fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
                 ),
               if (!isLoading && measurement != null) ...[
                 const SizedBox(height: 6),
                 Text(
                   measurement!.moment.label,
-                  style: Theme.of(context).textTheme.bodyMedium,
+                  style: const TextStyle(color: Colors.white70),
                 ),
               ],
             ],
@@ -643,27 +713,48 @@ class _GlucoseCard extends StatelessWidget {
 /// Botón de menú reutilizable para los accesos de la pantalla principal.
 ///
 /// [onTap] es opcional: los módulos aún no implementados (por ejemplo,
-/// Comida o Medicamentos) se muestran sin acción asociada.
+/// Comida o Medicamentos) se muestran sin acción asociada. [color]
+/// identifica visualmente cada módulo (icono sobre fondo circular
+/// tintado); por defecto usa el color primario del tema si no se
+/// especifica.
 class MenuButton extends StatelessWidget {
   const MenuButton({
     super.key,
     required this.icon,
     required this.title,
+    this.color,
     this.onTap,
   });
 
   final IconData icon;
   final String title;
+  final Color? color;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: Icon(icon),
-        title: Text(title, style: const TextStyle(fontSize: 18)),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-        onTap: onTap,
+    final effectiveColor = color ?? Theme.of(context).colorScheme.primary;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 6,
+          ),
+          leading: CircleAvatar(
+            backgroundColor: effectiveColor.withValues(alpha: 0.15),
+            foregroundColor: effectiveColor,
+            child: Icon(icon),
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: onTap,
+        ),
       ),
     );
   }
