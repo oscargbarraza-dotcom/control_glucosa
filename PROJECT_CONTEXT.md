@@ -1810,10 +1810,13 @@ Prioridad futura:
        su cuenta y sus datos desde un flujo claro. No se encontró
        ningún flujo de "eliminar cuenta" en el código actual
        (`AuthScreen` y repos relacionados no exponen esta acción).
-    6. ⬜ Licencia del proyecto. El `README.md` declara explícitamente
-       que el proyecto no tiene licencia de distribución definida.
-       Hay que elegir una (o al menos términos de uso) antes de
-       distribuir.
+    6. ✅ Licencia del proyecto (2026-10-22). Elegida licencia
+       propietaria ("Todos los derechos reservados"): nuevo archivo
+       `LICENSE` en la raíz del repo (Copyright OGB, prohíbe copia/
+       redistribución sin autorización, incluye el disclaimer de que
+       la app no es un dispositivo médico) y `README.md` actualizado
+       para referenciarlo en vez de declarar que no hay licencia
+       definida.
 
     Importantes, no bloqueantes pero de alto riesgo si se omiten:
 
@@ -1843,6 +1846,21 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-22 — Licencia del proyecto definida
+
+Cuarto bloqueante crítico del checklist de producción resuelto en la
+misma sesión:
+
+* Elegida licencia **propietaria** ("Todos los derechos reservados"):
+  no se abre el código, nadie puede copiarlo/redistribuirlo sin
+  autorización previa y por escrito del titular (OGB).
+* Nuevo archivo `LICENSE` en la raíz del repo con el texto completo,
+  incluyendo el disclaimer ya existente en `README.md` de que la app
+  no es un dispositivo médico.
+* `README.md`, sección "Licencia": actualizada para referenciar el
+  nuevo archivo `LICENSE`, en vez de declarar que el proyecto no tenía
+  ninguna licencia definida.
 
 ## 2026-10-22 — Reglas de Firestore desplegadas a producción
 

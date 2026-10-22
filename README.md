@@ -420,5 +420,8 @@ Nota sobre pruebas:
 
 ## Licencia
 
-El proyecto no declara actualmente una licencia de distribución.
+Software propietario. Copyright (c) 2026 OGB. Todos los derechos
+reservados. Ver el archivo [`LICENSE`](LICENSE) para el texto
+completo; queda prohibida la copia, modificación o redistribución del
+código sin autorización previa y por escrito del titular.
 
