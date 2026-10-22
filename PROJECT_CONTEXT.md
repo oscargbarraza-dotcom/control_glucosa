@@ -1924,10 +1924,10 @@ Prioridad futura:
        Build de verificación final tras el cambio:
        `app-release.apk (55.5MB)` generado sin errores.
     10. ⬜ Ficha de la tienda (Google Play; la ficha de App Store queda
-        pospuesta junto con el punto 8): disclaimer visible y
-        contraste de UI ya corregidos y validados con capturas en
-        dispositivo real (ver abajo); falta redactar
-        descripciones/clasificación de contenido y subir la ficha.
+        pospuesta junto con el punto 8): disclaimer visible,
+        contraste de UI y redacción completa (descripciones + guía
+        de clasificación de contenido) ya resueltos (ver abajo);
+        solo falta la subida manual a Play Console.
         - ✅ Disclaimer visible dentro de la app (2026-10-23): hasta
           ahora el aviso "no es un dispositivo médico" solo existía en
           `README.md`, en `PRIVACY_POLICY.md` y en la página pública
@@ -1970,8 +1970,26 @@ Prioridad futura:
           capturas son solo para validacion visual local y como
           insumo para subir manualmente a la ficha de Google Play; no
           se commitean salvo que se decida agregarlas explicitamente.
-        - ⬜ Pendiente: redaccion de descripcion corta/larga y
-          clasificacion de contenido de la ficha de Google Play.
+        - ✅ Redacción de la ficha completa (2026-10-23): creado
+          `GOOGLE_PLAY_LISTING.md` con categoría (Salud y forma
+          física), descripción corta validada en 66/80 caracteres
+          (más dos alternativas), descripción larga (~2000/4000
+          caracteres) estructurada por módulo (Glucosa, Comidas,
+          Medicamentos, Biometría) con el disclaimer incluido al
+          final, una guía de respuestas recomendadas para el
+          cuestionario de clasificación de contenido (IARC) de Play
+          Console con su justificación por bloque (resultado
+          esperado: clasificación mínima, apta para todo público),
+          recomendación de público objetivo (adultos, no dirigida a
+          niños) y un checklist final de subida manual (ficha,
+          clasificación, público objetivo, capturas de `Capturas/`
+          y formulario de Seguridad de los datos basado en
+          `PRIVACY_POLICY.md`). No se completó el cuestionario IARC
+          en sí dentro de Play Console porque solo el titular de la
+          cuenta de desarrollador puede hacerlo.
+        - ⬜ Pendiente (acción manual, fuera de este repositorio):
+          subir todo lo anterior a Play Console (ver sección 6 de
+          `GOOGLE_PLAY_LISTING.md`).
      11. ✅ Revisado (2026-10-22, junto con el punto 3): el proyecto de
         Firebase (`seguimiento-glucosa`) usa una única base Firestore
         `(default)` en modo `FIRESTORE_NATIVE`, sin ninguna base de
@@ -1981,6 +1999,48 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-23 — Redacción completa de la ficha de Google Play
+
+Avance del punto 10 del checklist de producción (ficha de tienda),
+tras resolver en la misma sesión el disclaimer visible en
+`HomeScreen` y la corrección de contraste del `TabBar`: se redactó el
+contenido textual completo que falta para poder subir la ficha en
+Play Console.
+
+* Se creó `GOOGLE_PLAY_LISTING.md` en la raíz del proyecto, con:
+  * Categoría recomendada (Salud y forma física, no Medicina, para
+    no sugerir que la app es una herramienta clínica/diagnóstica).
+  * Descripción corta validada contando caracteres reales con
+    PowerShell (66 de 80 permitidos) más dos alternativas, y
+    descripción larga (~2000 de 4000 caracteres) estructurada por
+    cada módulo de la app (Glucosa, Comidas, Medicamentos,
+    Biometría) y una sección final que reproduce el disclaimer ya
+    existente en la app y en `PRIVACY_POLICY.md`.
+  * Una guía de respuestas recomendadas, bloque por bloque, para el
+    cuestionario de clasificación de contenido (IARC) de Play
+    Console, con su justificación (p. ej. por qué "medicamentos
+    recetados" no activa el descriptor de "sustancias controladas",
+    o por qué no aplica "compras digitales" al no haber
+    dependencias de anuncios/compras en `pubspec.yaml`). El
+    resultado esperado es la clasificación mínima (apta para todo
+    público) en todos los sistemas regionales.
+  * Recomendación de público objetivo (adultos, explícitamente no
+    dirigida a niños, dado que procesa datos de salud personales) y
+    un checklist final de subida manual (ficha, clasificación,
+    público objetivo, las 7 capturas de `Capturas/`, y el
+    formulario de "Seguridad de los datos" basado en las secciones
+    2-5 de `PRIVACY_POLICY.md`).
+* No se completó el cuestionario IARC dentro de Play Console en sí,
+  ya que solo el titular de la cuenta de desarrollador puede hacerlo;
+  este documento deja las respuestas ya decididas para que esa
+  acción sea mecánica.
+* Se actualizó el punto 10 del checklist en `PROJECT_CONTEXT.md`
+  (más arriba) para reflejar que la redacción ya está resuelta y que
+  solo falta la subida manual a Play Console.
+* No hubo cambios de código Dart/Android en esta entrada; es
+  contenido de producto/tienda, sin impacto en `flutter analyze` ni
+  `flutter test`.
 
 ## 2026-10-22 — Decisión: alcance de la versión 1.0 limitado a Android
 
