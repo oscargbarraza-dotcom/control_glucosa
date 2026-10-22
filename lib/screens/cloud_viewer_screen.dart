@@ -30,10 +30,12 @@ class CloudViewerScreen extends StatelessWidget {
     super.key,
     required this.authRepository,
     required this.syncViewer,
+    required this.cloudDataDeletionRepository,
   });
 
   final AuthRepository authRepository;
   final CloudSyncViewer syncViewer;
+  final CloudDataDeletionRepository cloudDataDeletionRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +47,16 @@ class CloudViewerScreen extends StatelessWidget {
         builder: (context, snapshot) {
           final user = snapshot.data;
           if (user == null) {
-            return _SignedOutMessage(authRepository: authRepository);
+            return _SignedOutMessage(
+              authRepository: authRepository,
+              cloudDataDeletionRepository: cloudDataDeletionRepository,
+            );
           }
-          return _CloudViewerTabs(syncViewer: syncViewer);
+          return _CloudViewerTabs(
+            authRepository: authRepository,
+            syncViewer: syncViewer,
+            cloudDataDeletionRepository: cloudDataDeletionRepository,
+          );
         },
       ),
     );
@@ -59,9 +68,13 @@ class CloudViewerScreen extends StatelessWidget {
 /// [AuthScreen] para iniciar sesión con la misma cuenta que en el
 /// celular.
 class _SignedOutMessage extends StatelessWidget {
-  const _SignedOutMessage({required this.authRepository});
+  const _SignedOutMessage({
+    required this.authRepository,
+    required this.cloudDataDeletionRepository,
+  });
 
   final AuthRepository authRepository;
+  final CloudDataDeletionRepository cloudDataDeletionRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -85,8 +98,10 @@ class _SignedOutMessage extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute<void>(
-                    builder: (context) =>
-                        AuthScreen(repository: authRepository),
+                    builder: (context) => AuthScreen(
+                      repository: authRepository,
+                      cloudDataDeletionRepository: cloudDataDeletionRepository,
+                    ),
                   ),
                 );
               },
@@ -103,9 +118,15 @@ class _SignedOutMessage extends StatelessWidget {
 /// tipo de dato de salud, cada una escuchando en vivo su subcolección
 /// de Firestore.
 class _CloudViewerTabs extends StatelessWidget {
-  const _CloudViewerTabs({required this.syncViewer});
+  const _CloudViewerTabs({
+    required this.authRepository,
+    required this.syncViewer,
+    required this.cloudDataDeletionRepository,
+  });
 
+  final AuthRepository authRepository;
   final CloudSyncViewer syncViewer;
+  final CloudDataDeletionRepository cloudDataDeletionRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -113,6 +134,25 @@ class _CloudViewerTabs extends StatelessWidget {
       length: 4,
       child: Column(
         children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+              child: TextButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (context) => AuthScreen(
+                      repository: authRepository,
+                      cloudDataDeletionRepository: cloudDataDeletionRepository,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.manage_accounts_outlined),
+                label: const Text('Cuenta'),
+              ),
+            ),
+          ),
           const Material(
             color: Colors.white,
             child: TabBar(
@@ -167,9 +207,7 @@ class _CloudList<T> extends StatelessWidget {
         }
         final items = snapshot.data!;
         if (items.isEmpty) {
-          return Center(
-            child: Text(emptyMessage, textAlign: TextAlign.center),
-          );
+          return Center(child: Text(emptyMessage, textAlign: TextAlign.center));
         }
         return ListView.separated(
           padding: const EdgeInsets.symmetric(vertical: 8),

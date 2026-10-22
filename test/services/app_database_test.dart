@@ -118,12 +118,7 @@ void main() {
       expect(intakeUuid, isNotEmpty);
       expect(biometricUuid, isNotEmpty);
       // Los cuatro uuid generados deben ser distintos entre sí.
-      expect({
-        glucoseUuid,
-        mealUuid,
-        intakeUuid,
-        biometricUuid,
-      }, hasLength(4));
+      expect({glucoseUuid, mealUuid, intakeUuid, biometricUuid}, hasLength(4));
 
       // El índice único creado por la migración también rechaza un uuid
       // repetido en adelante.
@@ -138,6 +133,81 @@ void main() {
       );
 
       await upgraded.close();
+    },
+  );
+
+  test(
+    'deleteAllUserData vacía datos, catálogos, perfil y recordatorios',
+    () async {
+      final appDatabase = AppDatabase(
+        factory: databaseFactoryFfi,
+        databasePath: dbPath,
+      );
+      final db = await appDatabase.database;
+
+      final mealId = await db.insert('meals', {
+        'uuid': 'meal-1',
+        'type': 'breakfast',
+        'eaten_at': DateTime(2026, 1, 1, 8).toIso8601String(),
+      });
+      final foodId = await db.insert('foods', {'name': 'Pan'});
+      await db.insert('meal_food_items', {
+        'meal_id': mealId,
+        'food_id': foodId,
+        'quantity': '1 unidad',
+      });
+      await db.insert('meal_glucose_reminders', {
+        'meal_id': mealId,
+        'offset_minutes': 60,
+        'due_at': DateTime(2026, 1, 1, 9).toIso8601String(),
+        'status': 'pending',
+      });
+
+      final intakeId = await db.insert('medication_intakes', {
+        'uuid': 'intake-1',
+        'taken_at': DateTime(2026, 1, 1, 8).toIso8601String(),
+      });
+      final medicationId = await db.insert('medications', {
+        'name': 'Insulina',
+        'default_unit': 'units',
+      });
+      await db.insert('medication_intake_items', {
+        'intake_id': intakeId,
+        'medication_id': medicationId,
+        'quantity': 1.0,
+        'unit': 'units',
+      });
+      await db.insert('glucose_measurements', {
+        'uuid': 'glucose-1',
+        'value': 100,
+        'moment': 'now',
+        'measured_at': DateTime(2026, 1, 1).toIso8601String(),
+      });
+      await db.insert('biometric_measurements', {
+        'uuid': 'biometric-1',
+        'weight_kg': 70.0,
+        'measured_at': DateTime(2026, 1, 1).toIso8601String(),
+      });
+      await db.insert('user_profile', {'id': 1, 'height_cm': 170.0});
+
+      await appDatabase.deleteAllUserData();
+
+      for (final table in [
+        'meal_glucose_reminders',
+        'meal_food_items',
+        'medication_intake_items',
+        'meals',
+        'foods',
+        'medication_intakes',
+        'medications',
+        'glucose_measurements',
+        'biometric_measurements',
+        'user_profile',
+      ]) {
+        expect(await db.query(table), isEmpty, reason: 'tabla $table');
+      }
+
+      await db.close();
     },
   );
 }

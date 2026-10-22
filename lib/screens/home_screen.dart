@@ -237,6 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final sync = _syncRepository;
     return sync == null ? base : wrap(sync);
   }
+
   // No usa `??` por la misma razón que `_syncRepository`: el valor
   // por defecto de `GlucoseImportRepository` es `null` (no una
   // implementación real), ya que esta funcionalidad depende del plugin
@@ -289,9 +290,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_wasSignedIn) {
       unawaited(_pullMissingFromCloudSilently());
     }
-    _authStateSubscription = _authRepository.authStateChanges().listen((
-      user,
-    ) {
+    _authStateSubscription = _authRepository.authStateChanges().listen((user) {
       final isSignedIn = user != null;
       if (isSignedIn && !_wasSignedIn) {
         unawaited(_pullMissingFromCloudSilently());
@@ -524,13 +523,38 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openAuthScreen() {
-    Navigator.push(
+  Future<void> _openAuthScreen() async {
+    final didDeleteLocalData = await Navigator.push<bool>(
       context,
-      MaterialPageRoute<void>(
-        builder: (context) => AuthScreen(repository: _authRepository),
+      MaterialPageRoute<bool>(
+        builder: (context) => AuthScreen(
+          repository: _authRepository,
+          cloudDataDeletionRepository: _syncRepository,
+          deleteLocalData: _deleteAllLocalData,
+        ),
       ),
     );
+    if (didDeleteLocalData == true) {
+      await _loadLastMeasurement();
+    }
+  }
+
+  /// Borra todos los datos locales del dispositivo, incluyendo los
+  /// catálogos auxiliares, el perfil y los recordatorios. Solo está
+  /// disponible cuando los repositorios por defecto comparten
+  /// [AppDatabase] (producción); en tests con repositorios fake se
+  /// inyecta un callback específico directamente en [AuthScreen].
+  Future<void> _deleteAllLocalData() async {
+    // Evita que una alarma ya programada muestre información o acciones
+    // asociadas a recordatorios que el usuario acaba de borrar.
+    final pendingReminders = await _reminderRepository.getAllPending();
+    for (final reminder in pendingReminders) {
+      final id = reminder.id;
+      if (id != null) {
+        await widget.notificationService?.cancel(id);
+      }
+    }
+    await _sharedDatabase.deleteAllUserData();
   }
 
   @override

@@ -3,6 +3,21 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
+> Actualizado el 2026-10-22: flujo completo de eliminación de cuenta
+> y datos desde `AuthScreen` (último bloqueante crítico de producción).
+> `AuthRepository` añade `deleteAccount()`
+> (`FirebaseAuthRepository`→`FirebaseAuth.currentUser.delete()`), y el
+> nuevo contrato `CloudDataDeletionRepository.deleteAllCloudData()` lo
+> implementan `FirestoreCloudSyncRepository` (móvil) y
+> `FirestoreCloudSyncViewer` (escritorio). La UI ejecuta en orden
+> nube→Auth→SQLite opcional: primero borra por lotes las cuatro
+> subcolecciones `users/{uid}/...` todavía autenticado, luego la cuenta,
+> y finalmente `AppDatabase.deleteAllUserData()` si el usuario conserva
+> marcada esa opción; antes cancela notificaciones locales pendientes.
+> Detalle completo y pruebas en "Historial de cambios" de
+> `PROJECT_CONTEXT.md`, entrada "2026-10-22 — Eliminación de cuenta y
+> datos desde la app".
+>
 > Nota (2026-10-22, sin cambios de código/grafo): resueltos los
 > primeros dos bloqueantes críticos del checklist de producción
 > (`applicationId`/bundle ID definitivo `cl.ogb.seguimientoglucosa.app`

@@ -61,9 +61,10 @@ terceros.
   y escribir sus propios datos (reglas de seguridad de Firestore
   aplicadas a nivel de servidor); nadie más, ni siquiera otro usuario
   autenticado, puede acceder a tus datos.
-* La sincronización con la nube es manual (no en tiempo real):
-  decides cuándo respaldar o fusionar tu historial desde la pantalla
-  de Cuenta.
+* Con una sesión iniciada, los registros nuevos se sincronizan
+  automáticamente con Firestore y, al iniciar sesión en un dispositivo,
+  la app trae de la nube los registros que falten localmente. SQLite
+  sigue siendo el almacenamiento principal.
 
 ## 4. Con quién se comparten tus datos
 
@@ -75,8 +76,10 @@ terceros.
     inicio de sesión opcional y el respaldo en la nube opcional.
   * **Google Health Connect** / **Apple HealthKit**, solo si
     autorizas la importación de mediciones ya existentes en tu
-    dispositivo; la app únicamente lee esos datos, no los envía a
-    ningún servidor.
+    dispositivo. La app únicamente lee esos sistemas (nunca escribe
+    en ellos). Las mediciones importadas se guardan en SQLite y, si
+    tienes sesión iniciada, se sincronizan también con tu espacio
+    privado en Firestore, igual que una medición ingresada manualmente.
 * No usamos ningún puente o integración no oficial de terceros para
   obtener datos de sensores de glucosa (CGM). Evaluamos
   explícitamente esa posibilidad y decidimos no incluirla en la app
@@ -110,11 +113,13 @@ usando el resto de la app con registro manual.
 ## 6. Cuánto tiempo conservamos tus datos
 
 Tus datos se conservan mientras uses la app y, si tienes sesión
-iniciada, mientras mantengas tu cuenta activa. Puedes eliminar tus
-datos locales desinstalando la app, y puedes solicitar la eliminación
-de tu cuenta y de tu copia en la nube escribiendo a
-**oscargbarraza@gmail.com** (ver también la sección de derechos más
-abajo).
+iniciada, mientras mantengas tu cuenta activa. Puedes eliminar tu
+cuenta y todos tus datos en la nube directamente desde **Cuenta →
+Eliminar cuenta y datos** dentro de la app; en el
+mismo diálogo puedes elegir borrar también los datos locales de este
+dispositivo. Como alternativa, desinstalar la app elimina sus datos
+locales. Si necesitas ayuda, escribe a **oscargbarraza@gmail.com**
+(ver también la sección de derechos más abajo).
 
 ## 7. Tus derechos
 

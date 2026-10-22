@@ -28,6 +28,7 @@ import 'package:seguimiento_glucosa/models/meal_glucose_reminder.dart';
 import 'package:seguimiento_glucosa/models/medication.dart';
 import 'package:seguimiento_glucosa/models/medication_intake.dart';
 import 'package:seguimiento_glucosa/models/user_profile.dart';
+import 'package:seguimiento_glucosa/screens/auth_screen.dart';
 import 'package:seguimiento_glucosa/screens/home_screen.dart';
 import 'package:seguimiento_glucosa/services/auth_repository.dart';
 import 'package:seguimiento_glucosa/services/biometric_repository.dart';
@@ -306,6 +307,17 @@ class _FakeAuthRepository implements AuthRepository {
     _controller.add(user);
   }
 
+  /// Autentica el fake directamente para tests que ejercitan solo la
+  /// vista de cuenta (sin pasar por el formulario de login).
+  void authenticateForTest() {
+    const user = AppUser(
+      uid: 'uid-test',
+      email: 'persona@example.com',
+      displayName: 'Persona de Prueba',
+    );
+    _setUser(user);
+  }
+
   @override
   Future<AppUser> registerWithEmail({
     required String email,
@@ -355,6 +367,22 @@ class _FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {
+    _setUser(null);
+  }
+
+  /// Si no es `null`, la próxima llamada a [deleteAccount] lanzará
+  /// esta excepción en lugar de eliminar la cuenta.
+  AuthException? failDeleteWith;
+  int deleteAccountCallCount = 0;
+  void Function()? onDeleteAccount;
+
+  @override
+  Future<void> deleteAccount() async {
+    if (failDeleteWith != null) {
+      throw failDeleteWith!;
+    }
+    deleteAccountCallCount++;
+    onDeleteAccount?.call();
     _setUser(null);
   }
 }
@@ -426,6 +454,21 @@ class _FakeCloudSyncRepository implements CloudSyncRepository {
   @override
   Stream<List<BiometricMeasurement>> watchBiometricMeasurements() =>
       Stream.value(const []);
+
+  /// Si no es `null`, la próxima llamada a [deleteAllCloudData]
+  /// lanzará esta excepción en lugar de "eliminar" los datos.
+  CloudSyncException? failDeleteWith;
+  int deleteAllCloudDataCallCount = 0;
+  void Function()? onDeleteAllCloudData;
+
+  @override
+  Future<void> deleteAllCloudData() async {
+    if (failDeleteWith != null) {
+      throw failDeleteWith!;
+    }
+    deleteAllCloudDataCallCount++;
+    onDeleteAllCloudData?.call();
+  }
 }
 
 /// Repositorio de importación desde sensores/CGM en memoria usado solo
@@ -585,54 +628,50 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Tomar desde sensor prellena el formulario con el valor leído',
-    (WidgetTester tester) async {
-      final glucoseRepository = _FakeGlucoseRepository();
-      final importRepository = _FakeGlucoseImportRepository(
-        glucoseRepository,
-      )..latestMeasurement = GlucoseMeasurement(
+  testWidgets('Tomar desde sensor prellena el formulario con el valor leído', (
+    WidgetTester tester,
+  ) async {
+    final glucoseRepository = _FakeGlucoseRepository();
+    final importRepository = _FakeGlucoseImportRepository(glucoseRepository)
+      ..latestMeasurement = GlucoseMeasurement(
         value: 110,
         moment: GlucoseMoment.now,
         measuredAt: DateTime.now(),
         comment: 'Tomado desde Health Connect.',
       );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomeScreen(
-            repository: glucoseRepository,
-            importRepository: importRepository,
-          ),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          importRepository: importRepository,
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Glucosa actual'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Glucosa actual'));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Tomar desde sensor'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Tomar desde sensor'));
+    await tester.pumpAndSettle();
 
-      expect(importRepository.fetchLatestCallCount, 1);
-      expect(find.text('110'), findsOneWidget);
-      expect(find.text('Tomado desde Health Connect.'), findsOneWidget);
+    expect(importRepository.fetchLatestCallCount, 1);
+    expect(find.text('110'), findsOneWidget);
+    expect(find.text('Tomado desde Health Connect.'), findsOneWidget);
 
-      // El valor prellenado se puede guardar igual que uno manual.
-      await tester.tap(find.text('Guardar'));
-      await tester.pumpAndSettle();
+    // El valor prellenado se puede guardar igual que uno manual.
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
 
-      expect(glucoseRepository.stored?.value, 110);
-    },
-  );
+    expect(glucoseRepository.stored?.value, 110);
+  });
 
   testWidgets(
     'Tomar desde sensor sin mediciones recientes muestra un mensaje',
     (WidgetTester tester) async {
       final glucoseRepository = _FakeGlucoseRepository();
-      final importRepository = _FakeGlucoseImportRepository(
-        glucoseRepository,
-      );
+      final importRepository = _FakeGlucoseImportRepository(glucoseRepository);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -662,9 +701,8 @@ void main() {
     'sin leer el sensor',
     (WidgetTester tester) async {
       final glucoseRepository = _FakeGlucoseRepository();
-      final importRepository = _FakeGlucoseImportRepository(
-        glucoseRepository,
-      )..available = false;
+      final importRepository = _FakeGlucoseImportRepository(glucoseRepository)
+        ..available = false;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -881,130 +919,124 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Tras guardar una comida, se ofrece registrar una medición de '
-    'glucosa',
-    (WidgetTester tester) async {
-      final mealRepository = _FakeMealRepository();
-      final glucoseRepository = _FakeGlucoseRepository();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomeScreen(
-            repository: glucoseRepository,
-            mealRepository: mealRepository,
-            reminderRepository: _FakeMealGlucoseReminderRepository(),
-          ),
+  testWidgets('Tras guardar una comida, se ofrece registrar una medición de '
+      'glucosa', (WidgetTester tester) async {
+    final mealRepository = _FakeMealRepository();
+    final glucoseRepository = _FakeGlucoseRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          mealRepository: mealRepository,
+          reminderRepository: _FakeMealGlucoseReminderRepository(),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Comida'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Comida'));
+    await tester.pumpAndSettle();
 
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Alimento'),
-        'Arroz',
-      );
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Cantidad'),
-        '1 taza',
-      );
-      await tester.tap(find.byTooltip('Agregar alimento'));
-      await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Alimento'),
+      'Arroz',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Cantidad'),
+      '1 taza',
+    );
+    await tester.tap(find.byTooltip('Agregar alimento'));
+    await tester.pumpAndSettle();
 
-      await tester.scrollUntilVisible(
-        find.text('Guardar'),
-        200,
-        scrollable: find
-            .descendant(
-              of: find.byKey(const Key('mealFormListView')),
-              matching: find.byType(Scrollable),
-            )
-            .first,
-      );
-      await tester.pump();
-      await tester.tap(find.text('Guardar'));
-      await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Guardar'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('mealFormListView')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pump();
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Comida guardada.'), findsOneWidget);
+    expect(find.text('Comida guardada.'), findsOneWidget);
 
-      // Además del snackbar de confirmación, se ofrece registrar de
-      // inmediato una medición de glucosa asociada a la comida.
-      expect(find.text('¿Registrar tu glucosa?'), findsOneWidget);
+    // Además del snackbar de confirmación, se ofrece registrar de
+    // inmediato una medición de glucosa asociada a la comida.
+    expect(find.text('¿Registrar tu glucosa?'), findsOneWidget);
 
-      await tester.tap(find.text('Ahora no'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Ahora no'));
+    await tester.pumpAndSettle();
 
-      expect(find.text('¿Registrar tu glucosa?'), findsNothing);
-      expect(glucoseRepository.stored, isNull);
-    },
-  );
+    expect(find.text('¿Registrar tu glucosa?'), findsNothing);
+    expect(glucoseRepository.stored, isNull);
+  });
 
-  testWidgets(
-    'Elegir "Medir glucosa" tras guardar una comida navega a '
-    'GlucoseScreen y guarda la medición',
-    (WidgetTester tester) async {
-      final mealRepository = _FakeMealRepository();
-      final glucoseRepository = _FakeGlucoseRepository();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomeScreen(
-            repository: glucoseRepository,
-            mealRepository: mealRepository,
-            reminderRepository: _FakeMealGlucoseReminderRepository(),
-          ),
+  testWidgets('Elegir "Medir glucosa" tras guardar una comida navega a '
+      'GlucoseScreen y guarda la medición', (WidgetTester tester) async {
+    final mealRepository = _FakeMealRepository();
+    final glucoseRepository = _FakeGlucoseRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          mealRepository: mealRepository,
+          reminderRepository: _FakeMealGlucoseReminderRepository(),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Comida'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Comida'));
+    await tester.pumpAndSettle();
 
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Alimento'),
-        'Arroz',
-      );
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Cantidad'),
-        '1 taza',
-      );
-      await tester.tap(find.byTooltip('Agregar alimento'));
-      await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Alimento'),
+      'Arroz',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Cantidad'),
+      '1 taza',
+    );
+    await tester.tap(find.byTooltip('Agregar alimento'));
+    await tester.pumpAndSettle();
 
-      await tester.scrollUntilVisible(
-        find.text('Guardar'),
-        200,
-        scrollable: find
-            .descendant(
-              of: find.byKey(const Key('mealFormListView')),
-              matching: find.byType(Scrollable),
-            )
-            .first,
-      );
-      await tester.pump();
-      await tester.tap(find.text('Guardar'));
-      await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Guardar'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('mealFormListView')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pump();
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Medir glucosa'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Medir glucosa'));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Registrar glucosa'), findsOneWidget);
+    expect(find.text('Registrar glucosa'), findsOneWidget);
 
-      await tester.enterText(find.byType(TextFormField), '130');
-      await tester.tap(find.text('Guardar'));
-      await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), '130');
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
 
-      expect(glucoseRepository.stored?.value, 130);
+    expect(glucoseRepository.stored?.value, 130);
 
-      // `GlucoseScreen` solo retorna a `MealScreen` (de donde se abrió);
-      // al volver manualmente desde ahí a `HomeScreen`, la tarjeta
-      // principal refleja la medición recién guardada.
-      await tester.pageBack();
-      await tester.pumpAndSettle();
+    // `GlucoseScreen` solo retorna a `MealScreen` (de donde se abrió);
+    // al volver manualmente desde ahí a `HomeScreen`, la tarjeta
+    // principal refleja la medición recién guardada.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
 
-      expect(find.text('130 mg/dL'), findsOneWidget);
-    },
-  );
+    expect(find.text('130 mg/dL'), findsOneWidget);
+  });
 
   testWidgets('Tocar Medicamentos navega a MedicationScreen con sus pestañas', (
     WidgetTester tester,
@@ -1474,28 +1506,25 @@ void main() {
     expect(find.text('Continuar con Google'), findsOneWidget);
   });
 
-  testWidgets(
-    'Oculta Google Sign-In cuando el repositorio no lo soporta',
-    (WidgetTester tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomeScreen(
-            repository: _FakeGlucoseRepository(),
-            authRepository: _FakeAuthRepository(
-              supportsGoogleSignIn: false,
-            ),
-          ),
+  testWidgets('Oculta Google Sign-In cuando el repositorio no lo soporta', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: _FakeGlucoseRepository(),
+          authRepository: _FakeAuthRepository(supportsGoogleSignIn: false),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Cuenta'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Cuenta'));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Iniciar sesión'), findsWidgets);
-      expect(find.text('Continuar con Google'), findsNothing);
-    },
-  );
+    expect(find.text('Iniciar sesión'), findsWidgets);
+    expect(find.text('Continuar con Google'), findsNothing);
+  });
 
   testWidgets(
     'Registrarse con correo y contraseña muestra la cuenta autenticada',
@@ -1625,6 +1654,127 @@ void main() {
   });
 
   testWidgets(
+    'Eliminar cuenta borra primero nube, luego Auth y también datos locales',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final events = <String>[];
+      final authRepository = _FakeAuthRepository()
+        ..onDeleteAccount = () => events.add('auth');
+      final syncRepository = _FakeCloudSyncRepository()
+        ..onDeleteAllCloudData = () => events.add('cloud');
+      var localDeleteCallCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AuthScreen(
+            repository: authRepository,
+            cloudDataDeletionRepository: syncRepository,
+            deleteLocalData: () async {
+              events.add('local');
+              localDeleteCallCount++;
+            },
+          ),
+        ),
+      );
+      authRepository.authenticateForTest();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Eliminar cuenta y datos'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('¿Eliminar cuenta y datos?'), findsOneWidget);
+      expect(
+        find.text('Eliminar también los datos de este dispositivo'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Eliminar permanentemente'));
+      await tester.pumpAndSettle();
+
+      expect(events, equals(['cloud', 'auth', 'local']));
+      expect(syncRepository.deleteAllCloudDataCallCount, 1);
+      expect(authRepository.deleteAccountCallCount, 1);
+      expect(localDeleteCallCount, 1);
+      expect(find.byType(AuthScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Si falla borrar la nube, conserva la cuenta y los datos locales',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final authRepository = _FakeAuthRepository();
+      final syncRepository = _FakeCloudSyncRepository()
+        ..failDeleteWith = const CloudSyncException(
+          'No se pudieron eliminar tus datos de la nube.',
+        );
+      var localDeleteCallCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AuthScreen(
+            repository: authRepository,
+            cloudDataDeletionRepository: syncRepository,
+            deleteLocalData: () async => localDeleteCallCount++,
+          ),
+        ),
+      );
+      authRepository.authenticateForTest();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Eliminar cuenta y datos'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Eliminar permanentemente'));
+      await tester.pumpAndSettle();
+
+      expect(authRepository.deleteAccountCallCount, 0);
+      expect(localDeleteCallCount, 0);
+      expect(find.byType(AuthScreen), findsOneWidget);
+      expect(
+        find.text('No se pudieron eliminar tus datos de la nube.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('Cancelar el diálogo no elimina cuenta ni datos', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final authRepository = _FakeAuthRepository();
+    final syncRepository = _FakeCloudSyncRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AuthScreen(
+          repository: authRepository,
+          cloudDataDeletionRepository: syncRepository,
+        ),
+      ),
+    );
+    authRepository.authenticateForTest();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Eliminar cuenta y datos'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+
+    expect(syncRepository.deleteAllCloudDataCallCount, 0);
+    expect(authRepository.deleteAccountCallCount, 0);
+    expect(find.text('¿Eliminar cuenta y datos?'), findsNothing);
+  });
+
+  testWidgets(
     'Con sesión iniciada y syncRepository, Cuenta muestra el aviso de '
     'sincronización automática (sin botones manuales de respaldo)',
     (WidgetTester tester) async {
@@ -1684,68 +1834,62 @@ void main() {
     expect(syncRepository.pushGlucoseCallCount, 1);
   });
 
-  testWidgets(
-    'Con sesión ya iniciada al abrir la app, se dispara la fusión '
-    'automática desde la nube',
-    (WidgetTester tester) async {
-      final authRepository = _FakeAuthRepository();
-      // Simula una sesión ya restaurada automáticamente por Firebase al
-      // abrir la app (p. ej. al migrar a un celular nuevo).
-      await authRepository.signInWithGoogle();
-      final syncRepository = _FakeCloudSyncRepository()
-        ..pullResult = const CloudSyncPullSummary(
-          addedGlucoseMeasurements: 1,
-          addedMeals: 0,
-          addedMedicationIntakes: 0,
-          addedBiometricMeasurements: 0,
-        );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomeScreen(
-            repository: _FakeGlucoseRepository(),
-            authRepository: authRepository,
-            syncRepository: syncRepository,
-          ),
-        ),
+  testWidgets('Con sesión ya iniciada al abrir la app, se dispara la fusión '
+      'automática desde la nube', (WidgetTester tester) async {
+    final authRepository = _FakeAuthRepository();
+    // Simula una sesión ya restaurada automáticamente por Firebase al
+    // abrir la app (p. ej. al migrar a un celular nuevo).
+    await authRepository.signInWithGoogle();
+    final syncRepository = _FakeCloudSyncRepository()
+      ..pullResult = const CloudSyncPullSummary(
+        addedGlucoseMeasurements: 1,
+        addedMeals: 0,
+        addedMedicationIntakes: 0,
+        addedBiometricMeasurements: 0,
       );
-      await tester.pumpAndSettle();
 
-      expect(syncRepository.pullCallCount, 1);
-    },
-  );
-
-  testWidgets(
-    'Iniciar sesión mientras la app está abierta dispara la fusión '
-    'automática desde la nube',
-    (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-
-      final authRepository = _FakeAuthRepository();
-      final syncRepository = _FakeCloudSyncRepository();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomeScreen(
-            repository: _FakeGlucoseRepository(),
-            authRepository: authRepository,
-            syncRepository: syncRepository,
-          ),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: _FakeGlucoseRepository(),
+          authRepository: authRepository,
+          syncRepository: syncRepository,
         ),
-      );
-      await tester.pumpAndSettle();
-      expect(syncRepository.pullCallCount, 0);
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Cuenta'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Continuar con Google'));
-      await tester.pumpAndSettle();
+    expect(syncRepository.pullCallCount, 1);
+  });
 
-      expect(syncRepository.pullCallCount, 1);
-    },
-  );
+  testWidgets('Iniciar sesión mientras la app está abierta dispara la fusión '
+      'automática desde la nube', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final authRepository = _FakeAuthRepository();
+    final syncRepository = _FakeCloudSyncRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: _FakeGlucoseRepository(),
+          authRepository: authRepository,
+          syncRepository: syncRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(syncRepository.pullCallCount, 0);
+
+    await tester.tap(find.byTooltip('Cuenta'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continuar con Google'));
+    await tester.pumpAndSettle();
+
+    expect(syncRepository.pullCallCount, 1);
+  });
 
   testWidgets(
     'Un error al fusionar automáticamente desde la nube no interrumpe '

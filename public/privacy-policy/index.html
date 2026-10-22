@@ -42,7 +42,7 @@
 <ul>
 <li><strong>Almacenamiento principal: tu dispositivo.</strong> Todo lo que registras se guarda localmente en una base de datos SQLite dentro de tu teléfono. Si nunca inicias sesión, tus datos nunca salen de tu dispositivo.</li>
 <li><strong>Almacenamiento en la nube (opcional): Google Firebase (Firestore)</strong>, solo si inicias sesión. Cada usuario solo puede leer y escribir sus propios datos (reglas de seguridad de Firestore aplicadas a nivel de servidor); nadie más, ni siquiera otro usuario autenticado, puede acceder a tus datos.</li>
-<li>La sincronización con la nube es manual (no en tiempo real): decides cuándo respaldar o fusionar tu historial desde la pantalla de Cuenta.</li>
+<li>Con una sesión iniciada, los registros nuevos se sincronizan automáticamente con Firestore y, al iniciar sesión en un dispositivo, la app trae de la nube los registros que falten localmente. SQLite sigue siendo el almacenamiento principal.</li>
 </ul>
 
 <h2>4. Con quién se comparten tus datos</h2>
@@ -51,7 +51,7 @@
 <li>Usamos los siguientes proveedores únicamente como infraestructura técnica para hacer funcionar la app (encargados de tratamiento):
   <ul>
   <li><strong>Google Firebase</strong> (Authentication y Cloud Firestore), para el inicio de sesión opcional y el respaldo en la nube opcional.</li>
-  <li><strong>Google Health Connect</strong> / <strong>Apple HealthKit</strong>, solo si autorizas la importación de mediciones ya existentes en tu dispositivo; la app únicamente lee esos datos, no los envía a ningún servidor.</li>
+  <li><strong>Google Health Connect</strong> / <strong>Apple HealthKit</strong>, solo si autorizas la importación de mediciones ya existentes en tu dispositivo. La app únicamente lee esos sistemas (nunca escribe en ellos). Las mediciones importadas se guardan en SQLite y, si tienes sesión iniciada, se sincronizan también con tu espacio privado en Firestore, igual que una medición ingresada manualmente.</li>
   </ul>
 </li>
 <li>No usamos ningún puente o integración no oficial de terceros para obtener datos de sensores de glucosa (CGM). Evaluamos explícitamente esa posibilidad y decidimos no incluirla en la app por razones de seguridad y de cumplimiento de los términos de servicio de los fabricantes de sensores.</li>
@@ -67,7 +67,7 @@
 <p>Todos estos permisos son opcionales: puedes rechazarlos y seguir usando el resto de la app con registro manual.</p>
 
 <h2>6. Cuánto tiempo conservamos tus datos</h2>
-<p>Tus datos se conservan mientras uses la app y, si tienes sesión iniciada, mientras mantengas tu cuenta activa. Puedes eliminar tus datos locales desinstalando la app, y puedes solicitar la eliminación de tu cuenta y de tu copia en la nube escribiendo a <a href="mailto:oscargbarraza@gmail.com">oscargbarraza@gmail.com</a>.</p>
+<p>Tus datos se conservan mientras uses la app y, si tienes sesión iniciada, mientras mantengas tu cuenta activa. Puedes eliminar tu cuenta y todos tus datos en la nube directamente desde <strong>Cuenta → Eliminar cuenta y datos</strong> dentro de la app; en el mismo diálogo puedes elegir borrar también los datos locales de este dispositivo. Como alternativa, desinstalar la app elimina sus datos locales. Si necesitas ayuda, escribe a <a href="mailto:oscargbarraza@gmail.com">oscargbarraza@gmail.com</a>.</p>
 
 <h2>7. Tus derechos</h2>
 <p>De acuerdo con la Ley N.° 19.628 sobre protección de la vida privada (Chile) y como buena práctica general, puedes en cualquier momento:</p>

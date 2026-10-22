@@ -78,6 +78,32 @@ class AppDatabase {
     return opened;
   }
 
+  /// Elimina de forma transaccional **todos** los datos locales del
+  /// usuario (historiales, catálogos auxiliares, perfil y
+  /// recordatorios), sin borrar el archivo SQLite ni alterar su
+  /// esquema. Se usa exclusivamente desde el flujo explícito de
+  /// "eliminar cuenta y datos" de la pantalla Cuenta.
+  ///
+  /// Las tablas hijas se vacían antes que sus tablas padre para no
+  /// depender únicamente de `ON DELETE CASCADE` y mantener el método
+  /// robusto incluso si una conexión de prueba no habilitó las claves
+  /// foráneas.
+  Future<void> deleteAllUserData() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('meal_glucose_reminders');
+      await txn.delete('meal_food_items');
+      await txn.delete('medication_intake_items');
+      await txn.delete('meals');
+      await txn.delete('foods');
+      await txn.delete('medication_intakes');
+      await txn.delete('medications');
+      await txn.delete('glucose_measurements');
+      await txn.delete('biometric_measurements');
+      await txn.delete('user_profile');
+    });
+  }
+
   Future<void> _createAll(Database db) async {
     await db.execute(_createGlucoseMeasurementsTable);
     await db.execute(_createFoodsTable);

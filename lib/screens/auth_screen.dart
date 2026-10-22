@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/app_user.dart';
 import '../services/auth_repository.dart';
+import '../services/cloud_sync_repository.dart';
 
 /// URL pública de la política de privacidad (checklist de producción,
 /// bloqueante #4), publicada vía Firebase Hosting a partir de
@@ -25,15 +26,98 @@ const String privacyPolicyUrl =
 /// `lib/services/syncing_repositories.dart`—, sin que esta pantalla
 /// deba ofrecer ningún botón manual de respaldo o restauración.
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key, required this.repository});
+  const AuthScreen({
+    super.key,
+    required this.repository,
+    this.cloudDataDeletionRepository,
+    this.deleteLocalData,
+  });
 
   final AuthRepository repository;
+
+  /// Repositorio capaz de borrar las cuatro subcolecciones del usuario
+  /// en Firestore. Si es `null`, el botón de eliminación de cuenta no se
+  /// muestra, porque no sería seguro eliminar Firebase Auth dejando
+  /// datos de salud huérfanos en la nube.
+  final CloudDataDeletionRepository? cloudDataDeletionRepository;
+
+  /// Callback opcional para borrar también los datos locales del
+  /// dispositivo (SQLite, perfil, recordatorios y catálogos). En el
+  /// visor de escritorio es `null` porque no existe almacenamiento
+  /// local; la eliminación de cuenta y nube sigue disponible.
+  final Future<void> Function()? deleteLocalData;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  bool _isDeleting = false;
+
+  /// Ejecuta la eliminación en el único orden seguro:
+  /// 1) datos Firestore (todavía autenticado), 2) cuenta Firebase Auth,
+  /// 3) datos SQLite opcionales. Si falla 1 o 2, los datos locales no
+  /// se tocan; si falla 2, tampoco se pierde la sesión necesaria para
+  /// reintentar o completar el borrado en la nube.
+  Future<void> _deleteAccountAndData({required bool deleteLocalData}) async {
+    final cloudRepository = widget.cloudDataDeletionRepository;
+    if (cloudRepository == null || _isDeleting) {
+      return;
+    }
+
+    setState(() => _isDeleting = true);
+    var accountDeleted = false;
+    try {
+      await cloudRepository.deleteAllCloudData();
+      await widget.repository.deleteAccount();
+      accountDeleted = true;
+      if (deleteLocalData) {
+        await widget.deleteLocalData?.call();
+      }
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tu cuenta y tus datos fueron eliminados.'),
+        ),
+      );
+      Navigator.of(context).pop(deleteLocalData);
+    } on AuthException catch (e) {
+      _showDeleteError(e.message);
+    } on CloudSyncException catch (e) {
+      _showDeleteError(e.message);
+    } catch (_) {
+      if (accountDeleted) {
+        _showDeleteError(
+          'La cuenta y los datos en la nube se eliminaron, pero no se '
+          'pudieron borrar todos los datos de este dispositivo. Puedes '
+          'eliminarlos desde los ajustes del sistema o desinstalando la app.',
+        );
+        if (mounted) {
+          Navigator.of(context).pop(false);
+        }
+      } else {
+        _showDeleteError(
+          'No se pudo completar la eliminación. Intenta nuevamente.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDeleting = false);
+      }
+    }
+  }
+
+  void _showDeleteError(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -44,7 +128,13 @@ class _AuthScreenState extends State<AuthScreen> {
         builder: (context, snapshot) {
           final user = snapshot.data;
           if (user != null) {
-            return _AccountView(user: user, repository: widget.repository);
+            return _AccountView(
+              user: user,
+              repository: widget.repository,
+              canDeleteLocalData: widget.deleteLocalData != null,
+              isDeleting: _isDeleting,
+              onDeleteAccountAndData: _deleteAccountAndData,
+            );
           }
           return _AuthForm(repository: widget.repository);
         },
@@ -53,13 +143,29 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-/// Resumen de la cuenta autenticada, con opción de cerrar sesión.
-class _AccountView extends StatelessWidget {
-  const _AccountView({required this.user, required this.repository});
+/// Resumen de la cuenta autenticada, con opciones para cerrar sesión o
+/// eliminar permanentemente la cuenta y sus datos en la nube.
+class _AccountView extends StatefulWidget {
+  const _AccountView({
+    required this.user,
+    required this.repository,
+    required this.canDeleteLocalData,
+    required this.isDeleting,
+    required this.onDeleteAccountAndData,
+  });
 
   final AppUser user;
   final AuthRepository repository;
+  final bool canDeleteLocalData;
+  final bool isDeleting;
+  final Future<void> Function({required bool deleteLocalData})
+  onDeleteAccountAndData;
 
+  @override
+  State<_AccountView> createState() => _AccountViewState();
+}
+
+class _AccountViewState extends State<_AccountView> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -70,14 +176,14 @@ class _AccountView extends StatelessWidget {
           const Icon(Icons.account_circle, size: 80, color: Colors.deepPurple),
           const SizedBox(height: 16),
           Text(
-            user.displayName ?? 'Sesión iniciada',
+            widget.user.displayName ?? 'Sesión iniciada',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
-          if (user.email != null) ...[
+          if (widget.user.email != null) ...[
             const SizedBox(height: 4),
             Text(
-              user.email!,
+              widget.user.email!,
               style: const TextStyle(color: Colors.black54),
               textAlign: TextAlign.center,
             ),
@@ -98,18 +204,106 @@ class _AccountView extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
-              onPressed: () => repository.signOut(),
+              onPressed: widget.isDeleting
+                  ? null
+                  : () => widget.repository.signOut(),
               child: const Text('Cerrar sesión'),
             ),
           ),
           const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: widget.isDeleting ? null : _confirmDeleteAccount,
+            icon: widget.isDeleting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.delete_forever_outlined),
+            label: Text(
+              widget.isDeleting
+                  ? 'Eliminando cuenta y datos…'
+                  : 'Eliminar cuenta y datos',
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+          ),
+          const SizedBox(height: 8),
           TextButton(
-            onPressed: _openPrivacyPolicy,
+            onPressed: widget.isDeleting ? null : _openPrivacyPolicy,
             child: const Text('Política de privacidad'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _confirmDeleteAccount() async {
+    var deleteLocalData = widget.canDeleteLocalData;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          icon: Icon(
+            Icons.warning_amber_rounded,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          title: const Text('¿Eliminar cuenta y datos?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Esta acción es permanente. Se eliminarán tu cuenta de '
+                'acceso y todos tus datos de salud guardados en la nube.',
+              ),
+              if (widget.canDeleteLocalData) ...[
+                const SizedBox(height: 12),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: deleteLocalData,
+                  onChanged: (value) =>
+                      setDialogState(() => deleteLocalData = value ?? true),
+                  title: const Text(
+                    'Eliminar también los datos de este dispositivo',
+                  ),
+                  subtitle: const Text(
+                    'Incluye glucosa, comidas, medicamentos, biometría, '
+                    'perfil y recordatorios locales.',
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+              ],
+              const SizedBox(height: 12),
+              const Text(
+                'No podrás deshacer esta acción.',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Eliminar permanentemente'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    await widget.onDeleteAccountAndData(deleteLocalData: deleteLocalData);
   }
 
   Future<void> _openPrivacyPolicy() async {

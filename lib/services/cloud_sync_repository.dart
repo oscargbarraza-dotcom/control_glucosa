@@ -80,7 +80,24 @@ abstract class CloudSyncViewer {
 ///
 /// SQLite sigue siendo el almacenamiento principal en Android/iOS; esta
 /// interfaz nunca reemplaza datos locales, solo los complementa.
-abstract class CloudSyncRepository implements CloudSyncViewer {
+/// Contrato mínimo para eliminar todos los datos en la nube asociados
+/// al usuario autenticado. Se mantiene separado de [CloudSyncViewer]
+/// para que el visor de escritorio siga siendo de solo lectura salvo
+/// por esta única acción exigida por las tiendas: borrar la cuenta y
+/// sus datos.
+abstract class CloudDataDeletionRepository {
+  /// Elimina **todos** los documentos del usuario autenticado en las
+  /// cuatro subcolecciones (`glucose_measurements`, `meals`,
+  /// `medication_intakes`, `biometric_measurements` bajo
+  /// `users/{uid}/...`).
+  ///
+  /// Lanza [CloudSyncException] si el usuario no tiene sesión
+  /// iniciada o si falla la operación.
+  Future<void> deleteAllCloudData();
+}
+
+abstract class CloudSyncRepository
+    implements CloudSyncViewer, CloudDataDeletionRepository {
   /// Sube [measurement] a la nube bajo el usuario autenticado, de forma
   /// idempotente (sobrescribe si ya existía un registro con el mismo
   /// `uuid`). Si no hay sesión iniciada o falla el envío, no hace nada:
@@ -110,4 +127,21 @@ abstract class CloudSyncRepository implements CloudSyncViewer {
   /// `CloudViewerScreen`, que nunca invoca este método), o si falla la
   /// operación.
   Future<CloudSyncPullSummary> pullMissingFromCloud();
+
+  /// Elimina **todos** los documentos del usuario autenticado en las
+  /// cuatro subcolecciones (`glucose_measurements`, `meals`,
+  /// `medication_intakes`, `biometric_measurements` bajo
+  /// `users/{uid}/...`), como parte del flujo de "eliminar cuenta y
+  /// datos" (checklist de producción, bloqueante #5).
+  ///
+  /// No afecta los datos locales en SQLite de este dispositivo: solo
+  /// borra la copia en la nube. Debe llamarse **antes** de
+  /// [AuthRepository.deleteAccount] (que invalida la sesión), ya que
+  /// las reglas de seguridad de Firestore exigen estar autenticado
+  /// para poder borrar los propios documentos.
+  ///
+  /// Lanza [CloudSyncException] si el usuario no tiene sesión
+  /// iniciada o si falla la operación.
+  @override
+  Future<void> deleteAllCloudData();
 }

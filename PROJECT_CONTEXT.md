@@ -1811,11 +1811,21 @@ Prioridad futura:
        Cuenta (`AuthScreen`, nueva dependencia `url_launcher`), visible
        tanto con sesión iniciada como en el formulario de inicio de
        sesión/registro.
-    5. ⬜ Eliminación de cuenta y datos desde la app. Play Store exige
-       que, si hay cuentas (Firebase Auth), el usuario pueda eliminar
-       su cuenta y sus datos desde un flujo claro. No se encontró
-       ningún flujo de "eliminar cuenta" en el código actual
-       (`AuthScreen` y repos relacionados no exponen esta acción).
+    5. ✅ Eliminación de cuenta y datos desde la app (2026-10-22).
+       Nuevo botón destructivo "Eliminar cuenta y datos" en
+       `AuthScreen`, visible con sesión iniciada en móvil y escritorio;
+       muestra un diálogo de confirmación no descartable y, en móvil,
+       una casilla marcada por defecto para borrar también los datos
+       locales del dispositivo. El orden de ejecución evita datos de
+       salud huérfanos: primero borra por lotes las cuatro
+       subcolecciones `users/{uid}/...` en Firestore (todavía
+       autenticado), luego elimina la cuenta de Firebase Auth y por
+       último, si el usuario lo eligió, vacía transaccionalmente todas
+       las tablas SQLite y cancela notificaciones pendientes. Maneja
+       explícitamente `requires-recent-login` con un mensaje legible.
+       La política de privacidad pública fue actualizada y redesplegada
+       para explicar el flujo. Ver entrada correspondiente en Historial
+       de cambios.
     6. ✅ Licencia del proyecto (2026-10-22). Elegida licencia
        propietaria ("Todos los derechos reservados"): nuevo archivo
        `LICENSE` en la raíz del repo (Copyright OGB, prohíbe copia/
@@ -1852,6 +1862,52 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-22 — Eliminación de cuenta y datos desde la app
+
+Sexto y último bloqueante crítico del checklist de producción resuelto
+en la misma sesión:
+
+* `AuthRepository` incorpora `deleteAccount()`;
+  `FirebaseAuthRepository` lo implementa mediante
+  `FirebaseAuth.currentUser.delete()`, traduce errores del SDK a
+  mensajes legibles y trata específicamente `requires-recent-login`
+  (indica cerrar sesión, volver a iniciarla y reintentar).
+* Nuevo contrato `CloudDataDeletionRepository`, implementado por
+  `FirestoreCloudSyncRepository` (móvil) y
+  `FirestoreCloudSyncViewer` (escritorio), con
+  `deleteAllCloudData()`: borra las cuatro subcolecciones del usuario
+  (`glucose_measurements`, `meals`, `medication_intakes`,
+  `biometric_measurements`) en lotes de máximo 400 documentos, por
+  debajo del límite de 500 escrituras por `WriteBatch`. Se ejecuta
+  **antes** de eliminar Firebase Auth para conservar la autorización
+  necesaria de las reglas de Firestore y evitar datos de salud
+  huérfanos.
+* Nuevo botón destructivo "Eliminar cuenta y datos" en `AuthScreen`,
+  disponible con sesión iniciada tanto en Android/iOS como en el visor
+  Windows/macOS. Abre un diálogo de confirmación no descartable que
+  explica que la acción es permanente. En móvil incluye una casilla
+  marcada por defecto para borrar también los datos locales; puede
+  desmarcarse para conservarlos en ese dispositivo.
+* `AppDatabase.deleteAllUserData()` vacía transaccionalmente las diez
+  tablas de datos, catálogos, perfil y recordatorios sin eliminar el
+  archivo ni el esquema SQLite. Antes de ejecutarlo, `HomeScreen`
+  cancela las notificaciones locales de todos los recordatorios
+  pendientes para que no reaparezcan alarmas de datos ya borrados.
+* Manejo de fallos seguro: si falla el borrado de Firestore no se
+  elimina Firebase Auth ni SQLite; si Auth exige login reciente se
+  conserva la sesión/datos y se muestra el mensaje correspondiente;
+  si el borrado local falla después de eliminar nube+cuenta, se informa
+  que puede completarse desde Ajustes del sistema o desinstalando la
+  app.
+* Pruebas añadidas: éxito y orden exacto nube→Auth→local, fallo de nube
+  sin efectos parciales, cancelación del diálogo, y borrado real de las
+  diez tablas SQLite. Validación final: `flutter analyze` sin issues,
+  `flutter test` 126/126 y `flutter build apk --release` exitoso.
+* `PRIVACY_POLICY.md` y su HTML público fueron actualizados para indicar
+  el flujo dentro de la app y corregir la descripción de la
+  sincronización automática; Firebase Hosting fue redesplegado en
+  https://seguimiento-glucosa.web.app/privacy-policy/.
 
 ## 2026-10-22 — Política de privacidad redactada, publicada y enlazada en la app
 

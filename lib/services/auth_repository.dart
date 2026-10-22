@@ -64,4 +64,20 @@ abstract class AuthRepository {
 
   /// Cierra la sesión actual (de email/contraseña o de Google).
   Future<void> signOut();
+
+  /// Elimina permanentemente la cuenta del usuario autenticado
+  /// (checklist de producción, bloqueante #5: "eliminación de cuenta
+  /// y datos"). No elimina los datos locales en SQLite de este
+  /// dispositivo (son independientes de la cuenta); quien llama a
+  /// este método es responsable de borrar también los datos en la
+  /// nube (ver `CloudSyncRepository.deleteAllCloudData`) **antes** de
+  /// invocarlo, porque las reglas de seguridad de Firestore exigen
+  /// estar autenticado para poder borrar los propios documentos.
+  ///
+  /// Lanza [AuthException] si no hay sesión iniciada o si falla la
+  /// operación. En particular, si Firebase exige una autenticación
+  /// reciente por motivos de seguridad (código
+  /// `requires-recent-login`), el mensaje le indica al usuario que
+  /// debe cerrar sesión, volver a iniciarla y reintentar.
+  Future<void> deleteAccount();
 }

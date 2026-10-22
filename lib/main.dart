@@ -129,9 +129,7 @@ class SeguimientoGlucosaApp extends StatelessWidget {
       ),
       cardTheme: CardThemeData(
         elevation: 3,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -159,9 +157,11 @@ class SeguimientoGlucosaApp extends StatelessWidget {
   /// sincronización en la nube.
   Widget _homeForCurrentPlatform() {
     if (Platform.isWindows || Platform.isMacOS) {
+      final cloudViewer = FirestoreCloudSyncViewer();
       return CloudViewerScreen(
         authRepository: authRepository ?? FirebaseAuthRepository(),
-        syncViewer: FirestoreCloudSyncViewer(),
+        syncViewer: cloudViewer,
+        cloudDataDeletionRepository: cloudViewer,
       );
     }
     return HomeScreen(

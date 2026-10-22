@@ -243,6 +243,50 @@ class FirestoreCloudSyncRepository implements CloudSyncRepository {
     }
   }
 
+  // ---- Delete (eliminación de cuenta y datos) ----
+
+  @override
+  Future<void> deleteAllCloudData() async {
+    final uid = _requireUid();
+    try {
+      await Future.wait([
+        _deleteAllDocsIn(uid, _glucoseSubcollection),
+        _deleteAllDocsIn(uid, _mealsSubcollection),
+        _deleteAllDocsIn(uid, _intakesSubcollection),
+        _deleteAllDocsIn(uid, _biometricsSubcollection),
+      ]);
+    } catch (e) {
+      if (e is CloudSyncException) {
+        rethrow;
+      }
+      throw const CloudSyncException(
+        'No se pudieron eliminar tus datos de la nube. Verifica tu '
+        'conexión e intenta nuevamente.',
+      );
+    }
+  }
+
+  /// Elimina todos los documentos de la subcolección [name] del
+  /// usuario [uid], en lotes de hasta 400 operaciones (`WriteBatch`),
+  /// por debajo del límite de 500 escrituras por batch de Firestore.
+  /// Firestore no ofrece un borrado recursivo nativo desde el SDK de
+  /// cliente, por lo que se repite hasta que la subcolección quede
+  /// vacía.
+  Future<void> _deleteAllDocsIn(String uid, String name) async {
+    final collection = _subcollection(uid, name);
+    while (true) {
+      final snapshot = await collection.limit(400).get();
+      if (snapshot.docs.isEmpty) {
+        return;
+      }
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
+  }
+
   // ---- Watch (lectura en tiempo real, para el visor de escritorio) ----
 
   @override

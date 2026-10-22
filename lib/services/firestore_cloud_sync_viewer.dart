@@ -19,7 +19,8 @@ import 'cloud_sync_serialization.dart';
 /// Lee los mismos documentos que escribe `FirestoreCloudSyncRepository`
 /// desde el celular (`users/{uid}/...`), usando las funciones de
 /// (de)serialización compartidas en `cloud_sync_serialization.dart`.
-class FirestoreCloudSyncViewer implements CloudSyncViewer {
+class FirestoreCloudSyncViewer
+    implements CloudSyncViewer, CloudDataDeletionRepository {
   FirestoreCloudSyncViewer({
     fb_auth.FirebaseAuth? firebaseAuth,
     FirebaseFirestore? firestore,
@@ -68,6 +69,42 @@ class FirestoreCloudSyncViewer implements CloudSyncViewer {
     );
   }
 
+  @override
+  Future<void> deleteAllCloudData() async {
+    final uid = _firebaseAuth.currentUser?.uid;
+    if (uid == null) {
+      throw const CloudSyncException('Inicia sesión para eliminar tus datos.');
+    }
+    try {
+      await Future.wait([
+        _deleteAllDocsIn(uid, _glucoseSubcollection),
+        _deleteAllDocsIn(uid, _mealsSubcollection),
+        _deleteAllDocsIn(uid, _intakesSubcollection),
+        _deleteAllDocsIn(uid, _biometricsSubcollection),
+      ]);
+    } catch (_) {
+      throw const CloudSyncException(
+        'No se pudieron eliminar tus datos de la nube. Verifica tu '
+        'conexión e intenta nuevamente.',
+      );
+    }
+  }
+
+  Future<void> _deleteAllDocsIn(String uid, String name) async {
+    final collection = _subcollection(uid, name);
+    while (true) {
+      final snapshot = await collection.limit(400).get();
+      if (snapshot.docs.isEmpty) {
+        return;
+      }
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
+  }
+
   /// Ver la documentación del método homónimo en
   /// `FirestoreCloudSyncRepository`: mismo comportamiento, duplicado
   /// deliberadamente para no acoplar este visor a ningún repositorio
@@ -85,8 +122,7 @@ class FirestoreCloudSyncViewer implements CloudSyncViewer {
           .orderBy(dateField, descending: true)
           .snapshots()
           .map(
-            (snapshot) =>
-                snapshot.docs.map((d) => fromMap(d.data())).toList(),
+            (snapshot) => snapshot.docs.map((d) => fromMap(d.data())).toList(),
           );
     });
   }

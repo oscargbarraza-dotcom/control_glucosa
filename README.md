@@ -426,7 +426,10 @@ públicamente en <https://seguimiento-glucosa.web.app/privacy-policy/>
 pantalla **Cuenta** de la app. Resume qué datos se recopilan, dónde se
 almacenan (SQLite local vs. Firestore opcional), qué permisos de
 salud se solicitan y por qué, y cómo ejercer tus derechos sobre tus
-datos.
+datos. La pantalla **Cuenta** también permite eliminar
+permanentemente la cuenta de Firebase y todos sus datos en la nube;
+en móvil, el mismo diálogo permite borrar además el historial, perfil
+y recordatorios locales del dispositivo.
 
 ## Licencia
 

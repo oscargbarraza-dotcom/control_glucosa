@@ -158,6 +158,37 @@ class FirebaseAuthRepository implements AuthRepository {
     }
   }
 
+  @override
+  Future<void> deleteAccount() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw const AuthException(
+        'No hay ninguna sesión iniciada para eliminar.',
+      );
+    }
+    try {
+      await user.delete();
+    } on fb_auth.FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        throw const AuthException(
+          'Por seguridad, cierra sesión, vuelve a iniciarla y luego '
+          'intenta eliminar tu cuenta nuevamente.',
+        );
+      }
+      throw AuthException(_messageForCode(e.code));
+    }
+    if (supportsGoogleSignIn) {
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {
+        // La cuenta de Firebase ya fue eliminada de forma irreversible.
+        // Cerrar la sesión local del proveedor es best-effort: un fallo
+        // del plugin no debe convertir una eliminación exitosa en un
+        // error ni impedir que continúe el borrado local opcional.
+      }
+    }
+  }
+
   AppUser _requireAppUser(fb_auth.User? user) {
     final appUser = _toAppUser(user);
     if (appUser == null) {
