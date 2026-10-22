@@ -1739,6 +1739,70 @@ Prioridad futura:
     si además se necesita que la sincronización ocurra
     automáticamente/en tiempo real (sin que el usuario abra la
     pantalla de Cuenta y presione un botón).
+19. 🔶 Checklist para llevar la app a producción (Play Store/App
+    Store). Auditado el 2026-10-22; nada de esto está hecho todavía.
+
+    Bloqueantes críticos:
+
+    1. ⬜ Firma de release real. `android/app/build.gradle.kts` firma
+       el build `release` con el keystore de **debug** (hay un `TODO`
+       explícito en el archivo). Falta generar un keystore propio,
+       crear `android/key.properties` (no versionado) y actualizar
+       `signingConfigs.release` para usarlo.
+    2. ⬜ `applicationId`/bundle ID definitivos. Hoy son valores de
+       ejemplo: Android `com.example.seguimiento_glucosa`
+       (`android/app/build.gradle.kts`), iOS
+       `com.example.seguimientoGlucosa` (`ios/Runner.xcodeproj/
+       project.pbxproj`, 5 ocurrencias incl. `RunnerTests`). Google
+       Play y App Store rechazan `com.example.*`. Al cambiarlos hay
+       que regenerar y reemplazar `google-services.json` y
+       `GoogleService-Info.plist` desde la consola de Firebase con el
+       nuevo id de paquete.
+    3. ⬜ Desplegar las reglas de Firestore a producción
+       (`firebase deploy --only firestore:rules`). Ya documentado como
+       limitación conocida desde 2026-10-20; sin esto, el esquema
+       `users/{uid}/...` puede no estar protegido/activo en el
+       proyecto real.
+    4. ⬜ Política de privacidad. No existe ningún documento de
+       privacidad en el repo. Obligatoria para Play Store/App Store al
+       tratar datos de salud, y recomendable bajo la Ley 19.628
+       (Chile). Debe cubrir: qué se almacena (SQLite local vs.
+       Firestore opcional), qué permisos de salud se piden y por qué
+       (`NSHealthShareUsageDescription` en iOS, permisos Health
+       Connect en Android) y que no hay sincronización con puentes no
+       oficiales de terceros (ver decisión del 2026-10-22 arriba).
+    5. ⬜ Eliminación de cuenta y datos desde la app. Play Store exige
+       que, si hay cuentas (Firebase Auth), el usuario pueda eliminar
+       su cuenta y sus datos desde un flujo claro. No se encontró
+       ningún flujo de "eliminar cuenta" en el código actual
+       (`AuthScreen` y repos relacionados no exponen esta acción).
+    6. ⬜ Licencia del proyecto. El `README.md` declara explícitamente
+       que el proyecto no tiene licencia de distribución definida.
+       Hay que elegir una (o al menos términos de uso) antes de
+       distribuir.
+
+    Importantes, no bloqueantes pero de alto riesgo si se omiten:
+
+    7. ⬜ Validación manual real en un dispositivo Android físico
+       (Health Connect, notificaciones locales, login con Google,
+       lectura/escritura en Firestore). Hasta ahora todo lo validado
+       es `flutter analyze`/`flutter test`/build de APK, sin pruebas
+       interactivas en hardware.
+    8. ⬜ Validación manual real en iOS/macOS con Xcode (notificaciones
+       Darwin, `GoogleService-Info.plist`, permisos HealthKit). No se
+       puede hacer desde este entorno Windows.
+    9. ⬜ Habilitar explícitamente `minifyEnabled`/R8 en el build
+       `release` de Android y revisar/crear reglas ProGuard propias si
+       corresponde (hoy el build release no declara minify ni
+       `proguard-rules.pro` propio).
+    10. ⬜ Ficha de la tienda: descripciones, capturas de pantalla
+        (hay material preliminar en `Capturas/`), clasificación de
+        contenido, y asegurar que el disclaimer "no es un dispositivo
+        médico" del `README.md` también sea visible **dentro de la
+        app** (no solo en el repo).
+    11. ⬜ Revisar que el proyecto de Firebase (`seguimiento-glucosa`)
+        esté en modo producción real y no en modo
+        test/desarrollo por defecto para Firestore.
 
 ---
 
