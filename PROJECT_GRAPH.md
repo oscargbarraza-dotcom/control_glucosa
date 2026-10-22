@@ -3,6 +3,19 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
+> Nota (2026-10-22, sin cambios de código/grafo): **decisión de
+> producto** — la versión 1.0 se publica solo en Google Play/Android;
+> la validación manual en iOS/macOS (punto 8 del checklist de
+> producción) y la ficha de App Store quedan **pospuestas** para una
+> versión futura, no solo bloqueadas por falta de hardware Apple. El
+> código multiplataforma existente (`Platform.isIOS`,
+> `DarwinNotificationService`, `ios/Runner/GoogleService-Info.plist`,
+> importación vía Apple Health) se conserva íntegro, sin eliminar ni
+> comentar nada; solo se pospone su validación y publicación. Detalle
+> completo en "Historial de cambios" de `PROJECT_CONTEXT.md`, entrada
+> "2026-10-22 — Decisión: alcance de la versión 1.0 limitado a
+> Android".
+>
 > Actualizado el 2026-10-22: flujo completo de eliminación de cuenta
 > y datos desde `AuthScreen` (último bloqueante crítico de producción).
 > `AuthRepository` añade `deleteAccount()`

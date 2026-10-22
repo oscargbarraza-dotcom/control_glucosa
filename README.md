@@ -381,23 +381,31 @@ Nota sobre pruebas:
 
 ## Próximos pasos recomendados
 
-1. Validar en una Mac con Xcode el flujo completo de notificaciones en
-   iOS (`DarwinNotificationService`): concesión/denegación del permiso
-   de notificaciones, entrega con la app cerrada o en background,
-   comportamiento al reiniciar el dispositivo y toque de la
-   notificación. La validación actual en este entorno Windows solo
-   cubrió `flutter analyze` y `flutter test` (no requieren compilar
-   para iOS); no fue posible ejecutar `flutter build ios` ni abrir el
-   proyecto en Xcode para confirmar que `ios/Runner/AppDelegate.swift`
-   (registro de `UNUserNotificationCenterDelegate` y
+> **Nota (2026-10-22):** la versión 1.0 se publica solo en Google
+> Play/Android (ver "Decisión: alcance de la versión 1.0 limitado a
+> Android" en `PROJECT_CONTEXT.md`). Los puntos 1 y 4 (validación/
+> verificación en iOS/macOS con Xcode) quedan **pospuestos** para una
+> versión futura; los puntos 2 y 5 (validación interactiva en Android
+> real) ya se completaron el 2026-10-22, ver "Validación manual en
+> dispositivo Android físico real" en `PROJECT_CONTEXT.md`.
+
+1. ⏸️ (Pospuesto) Validar en una Mac con Xcode el flujo completo de
+   notificaciones en iOS (`DarwinNotificationService`): concesión/
+   denegación del permiso de notificaciones, entrega con la app
+   cerrada o en background, comportamiento al reiniciar el
+   dispositivo y toque de la notificación. La validación actual en
+   este entorno Windows solo cubrió `flutter analyze` y `flutter
+   test` (no requieren compilar para iOS); no fue posible ejecutar
+   `flutter build ios` ni abrir el proyecto en Xcode para confirmar
+   que `ios/Runner/AppDelegate.swift` (registro de
+   `UNUserNotificationCenterDelegate` y
    `FlutterLocalNotificationsPlugin.setPluginRegistrantCallback`)
    compila sin errores.
-2. Validar en un dispositivo/emulador Android real el flujo completo
-   de notificaciones (concesión/denegación del permiso de alarma
-   exacta, entrega con la app cerrada, reinicio del dispositivo y
-   toque de la notificación), ya que la validación actual cubrió
-   `flutter analyze`, `flutter test` y una compilación exitosa del
-   APK, pero no todas las rutas interactivas del sistema operativo.
+2. ✅ (2026-10-22) Validado en un dispositivo Android real (Honor
+   `ELI-NX9`) el flujo completo de notificaciones: alarmas reales
+   (`dumpsys alarm`, 60/90 min), notificación disparada adelantando
+   la hora del dispositivo, e ícono renderizado correctamente
+   (`dumpsys notification`, verificación visual).
 3. Evaluar si se necesita sincronización automática/en tiempo real
    (más allá del respaldo/restauración manual ya implementado). Ya se
    agregó la clave estable (`uuid`) y la fusión manual
@@ -405,18 +413,18 @@ Nota sobre pruebas:
    si además se necesita que ocurra automáticamente/en tiempo real,
    sin que el usuario tenga que abrir la pantalla de Cuenta y
    presionar un botón.
-4. Verificar en una Mac con Xcode que
+4. ⏸️ (Pospuesto) Verificar en una Mac con Xcode que
    `ios/Runner/GoogleService-Info.plist` (generado vía
    `firebase apps:sdkconfig` y enlazado manualmente al proyecto Xcode,
    ya que `flutterfire configure` no pudo completarlo desde Windows)
    compila y se incluye correctamente al construir para iOS, y que el
    inicio de sesión con Google, el respaldo/restauración y la
    importación desde Apple Health funcionan en esa plataforma.
-5. Probar el inicio de sesión con Google, el respaldo/restauración y
-   la importación desde Health Connect en un dispositivo/emulador
-   Android real (la validación actual cubrió `flutter analyze`,
-   `flutter test` y una compilación exitosa del APK, pero no todas las
-   ejecuciones interactivas).
+5. ✅ (2026-10-22) Probados en un dispositivo Android real el inicio
+   de sesión con Google (contra Firebase Auth de producción), la
+   sincronización automática a Firestore (confirmada en la consola de
+   Firebase) y el botón "Importar desde sensor" (Health Connect, con
+   el resultado esperado de "permiso denegado" en ese dispositivo).
 
 ## Política de privacidad
 

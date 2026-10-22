@@ -1739,8 +1739,13 @@ Prioridad futura:
     si además se necesita que la sincronización ocurra
     automáticamente/en tiempo real (sin que el usuario abra la
     pantalla de Cuenta y presione un botón).
-19. 🔶 Checklist para llevar la app a producción (Play Store/App
-    Store). Auditado el 2026-10-22; nada de esto está hecho todavía.
+19. 🔶 Checklist para llevar la app a producción. Auditado el
+    2026-10-22. **Alcance de la versión 1.0 (2026-10-22): solo
+    Google Play/Android** — iOS/App Store queda pospuesto para una
+    versión futura, ver la entrada "Decisión: alcance de la versión
+    1.0 limitado a Android" en el Historial de cambios. Los puntos
+    marcados como bloqueantes de "tienda" a continuación se evalúan
+    únicamente contra Google Play.
 
     Bloqueantes críticos:
 
@@ -1878,9 +1883,14 @@ Prioridad futura:
          (recordar además que la integración con LibreLink/FreeStyle
          queda fuera de alcance por decisión ya tomada, ver entrada
          "Decisión: no integrar el puente no oficial LibreLink").
-    8. ⬜ Validación manual real en iOS/macOS con Xcode (notificaciones
-       Darwin, `GoogleService-Info.plist`, permisos HealthKit). No se
-       puede hacer desde este entorno Windows.
+    8. ⏸️ Validación manual real en iOS/macOS con Xcode (notificaciones
+       Darwin, `GoogleService-Info.plist`, permisos HealthKit).
+       **Pospuesto para una versión futura** (2026-10-22, decisión de
+       producto: la versión 1.0 se publica solo en Android/Google
+       Play; deja de ser solo una limitación técnica de este entorno
+       Windows sin Mac/Xcode disponible). Ver la entrada "Decisión:
+       alcance de la versión 1.0 limitado a Android" en el Historial
+       de cambios.
     9. ✅ R8/minificación (2026-10-22). Auditado: el Flutter Gradle
        Plugin (código del propio SDK Flutter, `FlutterPlugin.kt`) ya
        activa automáticamente `isMinifyEnabled`/`isShrinkResources` para
@@ -1913,11 +1923,12 @@ Prioridad futura:
        protección sea explícita e independiente del ícono de la app.
        Build de verificación final tras el cambio:
        `app-release.apk (55.5MB)` generado sin errores.
-    10. ⬜ Ficha de la tienda: descripciones, capturas de pantalla
-        (hay material preliminar en `Capturas/`), clasificación de
-        contenido, y asegurar que el disclaimer "no es un dispositivo
-        médico" del `README.md` también sea visible **dentro de la
-        app** (no solo en el repo).
+    10. ⬜ Ficha de la tienda (Google Play; la ficha de App Store queda
+        pospuesta junto con el punto 8): descripciones, capturas de
+        pantalla (hay material preliminar en `Capturas/`),
+        clasificación de contenido, y asegurar que el disclaimer "no
+        es un dispositivo médico" del `README.md` también sea visible
+        **dentro de la app** (no solo en el repo).
     11. ✅ Revisado (2026-10-22, junto con el punto 3): el proyecto de
         Firebase (`seguimiento-glucosa`) usa una única base Firestore
         `(default)` en modo `FIRESTORE_NATIVE`, sin ninguna base de
@@ -1927,6 +1938,46 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-22 — Decisión: alcance de la versión 1.0 limitado a Android
+
+**Decisión de producto** (no una limitación técnica nueva): la
+versión 1.0 de **Seguimiento Glucosa** se publica **solo en Google
+Play/Android**. La validación manual en iOS/macOS (punto 8 del
+checklist de producción) y la ficha de tienda de App Store (parte del
+punto 10) quedan **pospuestas explícitamente** para una versión
+futura, no simplemente bloqueadas por falta de hardware Apple/Xcode.
+
+* Motivo: enfocar el esfuerzo de lanzamiento en una sola plataforma
+  ya validada de punta a punta en hardware real (ver "Validación
+  manual en dispositivo Android físico real", misma fecha), en vez de
+  repartirlo entre dos tiendas cuando solo una puede probarse
+  interactivamente desde este entorno Windows.
+* El código multiplataforma existente (`Platform.isIOS`,
+  `DarwinNotificationService`, `ios/Runner/GoogleService-Info.plist`,
+  HealthKit vía el plugin `health`, etc.) **se conserva sin cambios**:
+  no se elimina ni se comenta nada del soporte iOS ya implementado,
+  solo se pospone su validación y publicación. `flutter analyze` y
+  `flutter test` siguen cubriendo esa rama de código igual que antes.
+* Impacto en el checklist de producción (`PROJECT_CONTEXT.md`, más
+  abajo):
+  * Punto 8 (validación manual iOS/macOS): pasa de "⬜ Pendiente
+    (bloqueado por hardware)" a "⏸️ Pospuesto para una versión futura
+    (decisión de producto)".
+  * Punto 10 (ficha de tienda): se acota explícitamente a Google
+    Play para esta versión; la ficha de App Store se evaluará junto
+    con el punto 8 en el futuro.
+  * El resto del checklist (puntos 1–7, 9, 11) ya estaba resuelto
+    exclusivamente en términos de Android/Google Play, por lo que no
+    cambia.
+* Si en el futuro se retoma iOS, revisar primero si `flutterfire
+  configure`, el keystore/bundle ID y las reglas de Firestore
+  necesitan algún ajuste específico para esa plataforma (la mayoría
+  ya están configurados de forma multiplataforma, ver puntos 2 y 3
+  del checklist).
+* No hubo cambios de código en esta entrada; es puramente una
+  decisión de alcance y de producto, documentada para no repetir la
+  discusión más adelante.
 
 ## 2026-10-22 — Validación manual en dispositivo Android físico real
 
