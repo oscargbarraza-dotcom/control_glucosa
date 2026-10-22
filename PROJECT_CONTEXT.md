@@ -1705,7 +1705,14 @@ Prioridad futura:
     bidireccional en tiempo real. Ver Historial de cambios.
 15. ✅ Integración con sensores/CGM (importación manual, de solo lectura,
     desde Google Health Connect/Apple Health vía el plugin `health`).
-    Ver Historial de cambios.
+    Ver Historial de cambios. **Nota (2026-10-22)**: para sensores sin
+    integración oficial del fabricante con Health Connect (p. ej.
+    FreeStyle Libre 2 Plus), se evaluó y **se descartó** integrar un
+    puente no oficial (`HealthConnect-LibreLinkUp`) en la app
+    distribuida, por riesgo de ToS de Abbott y responsabilidad legal
+    (Ley 19.628) frente a terceros. El registro manual sigue siendo la
+    vía soportada para esos casos. Ver entrada correspondiente en
+    Historial de cambios.
 16. ✅ Perfil de usuario (`UserProfile`: altura obligatoria; fecha de
     nacimiento, sexo biológico y nombre a mostrar opcionales), nueva
     pestaña Perfil en el módulo de Biometría, y cálculo de IMC
@@ -1736,6 +1743,73 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-22 — Decisión: no integrar el puente no oficial LibreLinkUp→Health Connect en la app distribuida
+
+Contexto: el sensor del propio usuario (FreeStyle Libre 2 Plus, Chile)
+no tiene integración oficial de Abbott con Google Health Connect — la
+app oficial FreeStyle LibreLink no escribe ahí. La única forma de que
+esos datos lleguen a Health Connect (y por lo tanto a la importación
+genérica ya implementada en el punto 15 del roadmap) es mediante un
+puente **no oficial** de terceros, p. ej.
+`c99koder/HealthConnect-LibreLinkUp` (Kotlin/Java, licencia Apache
+2.0), que inicia sesión contra la API no documentada de LibreView con
+las credenciales Abbott del usuario y escribe las lecturas en Health
+Connect mediante un `SyncWorker` periódico.
+
+* Se realizó una auditoría de seguridad de solo lectura de ese repo
+  externo (`LibreLinkUp.java`, `MainActivity.kt`, `SyncWorker.java`,
+  `proguard-rules.pro`, manifiesto/permisos, endpoints regionales, y
+  verificación vía API de GitHub de que el tag `1.5` es idéntico a
+  `main`). Hallazgos relevantes:
+  * **Alto**: (a) riesgo de incumplir los Términos de Servicio de
+    Abbott al simular ser un cliente oficial de LibreView, con posible
+    bloqueo de la cuenta; (b) sin manejo de errores al escribir en
+    Health Connect; (c) sin `clientRecordId`, lo que puede producir
+    duplicados en sincronizaciones repetidas.
+  * **Medio**: permiso de lectura de glucosa solicitado de forma más
+    amplia de lo necesario; sin build reproducible verificable contra
+    el código fuente publicado.
+  * **Bajo**: la contraseña de LibreView queda en memoria sin limpieza
+    explícita; solo sincroniza la lectura más reciente (no el
+    histórico completo).
+  * Sin hallazgos de exfiltración de datos ni SDKs de terceros
+    ocultos; las credenciales nunca se persisten en disco (solo un
+    token cifrado vía Jetpack Security `EncryptedSharedPreferences`).
+* **Decisión de producto/negocio** (no solo técnica): dado que
+  **Seguimiento Glucosa** está destinada a **distribuirse** a
+  terceros (no es exclusivamente para uso personal del desarrollador),
+  **no se integra, empaqueta, ni se instruye a los usuarios
+  distribuidos a instalar** `HealthConnect-LibreLinkUp` (ni ningún
+  otro puente no oficial equivalente) como parte del flujo soportado
+  de la app. El **registro manual** de glucosa sigue siendo la única
+  vía **soportada** para todos los usuarios distribuidos. El botón
+  "Importar desde sensor" (Health Connect/Apple Health, punto 15 del
+  roadmap) se mantiene **sin cambios de código**: sigue siendo una
+  importación genérica de solo lectura, agnóstica de fabricante, que
+  simplemente no tendrá datos que importar para usuarios con Libre 2
+  Plus a menos que ellos mismos instalen —bajo su propio riesgo y
+  fuera del flujo soportado— un puente no oficial.
+* Motivo legal señalado (**pendiente de validar formalmente con
+  asesoría legal**, fuera del alcance de este asistente): la Ley
+  19.628 sobre Protección de la Vida Privada (Chile) califica los
+  datos de salud como datos sensibles; integrar o recomendar
+  activamente un puente que depende de credenciales de un tercero
+  (Abbott/LibreView) para una app distribuida a múltiples usuarios
+  añade una capa de responsabilidad legal que no tiene sentido asumir
+  sin asesoría legal explícita, frente al beneficio limitado (una
+  integración no oficial y frágil).
+* Para uso **personal** del propio desarrollador (no distribuido),
+  instalar el APK oficial desde las *Releases* de
+  `c99koder/HealthConnect-LibreLinkUp` (verificando el SHA-256
+  publicado) sigue siendo razonable, bajo su propio riesgo y criterio.
+* No hubo cambios de código en `seguimiento_glucosa` ni en el repo
+  externo auditado; esta entrada es puramente una decisión de alcance
+  y de producto, documentada para no repetir la evaluación más
+  adelante.
+* **Pendiente abierto**: monitorear si Abbott lanza una integración
+  oficial de FreeStyle LibreLink con Google Health Connect/Apple
+  Health en el futuro; si ocurre, reevaluar esta decisión.
 
 ## 2026-10-21 — Auto-resolución de recordatorios con la lectura más reciente del sensor
 

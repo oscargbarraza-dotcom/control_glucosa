@@ -3,6 +3,19 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
+> Nota (2026-10-22, sin cambios de código/grafo): se evaluó y se
+> descartó integrar en la app distribuida un puente no oficial
+> (`HealthConnect-LibreLinkUp`) para llevar lecturas de sensores sin
+> integración oficial con Health Connect (p. ej. FreeStyle Libre 2
+> Plus) hacia `GlucoseImportRepository`/`HealthGlucoseImportRepository`
+> (ver `lib/services/glucose_import_repository.dart` y
+> `health_glucose_import_repository.dart` más abajo, que no cambiaron:
+> siguen siendo una importación agnóstica de fabricante vía el plugin
+> `health`). Detalle completo de la decisión y su justificación en
+> "Historial de cambios" de `PROJECT_CONTEXT.md`, entrada
+> "2026-10-22 — Decisión: no integrar el puente no oficial
+> LibreLinkUp→Health Connect en la app distribuida".
+>
 > Actualizado el 2026-10-21: `MealGlucoseReminderCoordinator.reviewPending()`
 > cambia su estrategia de auto-resolución. Antes exigía que una medición
 > (ya existente o recién importada en bloque) estuviera dentro de ±10
