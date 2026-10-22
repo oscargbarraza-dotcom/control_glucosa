@@ -29,6 +29,22 @@ generado a partir del análisis estático de `lib/` y `test/`.
 > entrada "2026-10-22 — Keystore de release real +
 > `applicationId`/bundle ID definitivos".
 >
+> Nota (2026-10-22, sin cambios de código Dart/grafo de navegación):
+> auditado y blindado el punto 9 del checklist (R8/minificación de
+> Android). El Flutter Gradle Plugin ya habilitaba automáticamente
+> `minifyEnabled`/`shrinkResources` en el build `release` sin
+> configuración explícita del proyecto; se documentó ese comportamiento
+> en `android/app/build.gradle.kts` y se añadieron
+> `android/app/proguard-rules.pro` y
+> `android/app/src/main/res/raw/keep.xml` (este último protege
+> explícitamente el ícono `@mipmap/ic_launcher` usado por
+> `AndroidNotificationService` del *resource shrinker*, antes protegido
+> solo por coincidencia con el ícono de la app). Son cambios de
+> configuración nativa de Android, sin impacto en el grafo de
+> dependencias de `lib/`. Detalle completo en "Historial de cambios" de
+> `PROJECT_CONTEXT.md`, entrada "2026-10-22 — R8/minificación auditada y
+> blindaje del ícono de notificaciones".
+>
 > Nota (2026-10-22, sin cambios de código/grafo): se evaluó y se
 > descartó integrar en la app distribuida un puente no oficial
 > (`HealthConnect-LibreLinkUp`) para llevar lecturas de sensores sin

@@ -1844,10 +1844,38 @@ Prioridad futura:
     8. ⬜ Validación manual real en iOS/macOS con Xcode (notificaciones
        Darwin, `GoogleService-Info.plist`, permisos HealthKit). No se
        puede hacer desde este entorno Windows.
-    9. ⬜ Habilitar explícitamente `minifyEnabled`/R8 en el build
-       `release` de Android y revisar/crear reglas ProGuard propias si
-       corresponde (hoy el build release no declara minify ni
-       `proguard-rules.pro` propio).
+    9. ✅ R8/minificación (2026-10-22). Auditado: el Flutter Gradle
+       Plugin (código del propio SDK Flutter, `FlutterPlugin.kt`) ya
+       activa automáticamente `isMinifyEnabled`/`isShrinkResources` para
+       el build type `release` de cualquier app Flutter con AGP
+       moderno, sin que `android/app/build.gradle.kts` tenga que
+       declararlo, agregando `proguard-android-optimize.txt`, las reglas
+       propias del engine Flutter y las reglas "consumer" que cada
+       plugin Android publica por su cuenta (Firebase Auth, Firestore,
+       `health`, `flutter_local_notifications`, `google_sign_in`,
+       `sqflite`, `url_launcher`, etc.). Confirmado con un build limpio
+       (`flutter clean` + `flutter build apk --release`): `BUILD
+       SUCCESSFUL`, sin warnings de "Missing class" ni reglas faltantes
+       para ninguna dependencia del proyecto; ya existían
+       `build/app/outputs/mapping/release/{mapping,seeds,usage,
+       resources}.txt` de un build anterior como evidencia adicional.
+       Se documentó explícitamente este comportamiento (antes implícito)
+       con comentarios en `android/app/build.gradle.kts` y se creó
+       `android/app/proguard-rules.pro` (recogido automáticamente por el
+       plugin si existe) documentando que hoy no hace falta ninguna
+       regla `-keep` propia. Se blindó además un riesgo real detectado:
+       `AndroidNotificationService` usa `@mipmap/ic_launcher` como
+       ícono de las notificaciones de los recordatorios post-comida,
+       recurso que hoy sobrevive al *resource shrinker* solo porque
+       también está referenciado como ícono de la app en
+       `AndroidManifest.xml` — protección accidental que se perdería si
+       alguna vez se cambia el ícono de la app sin tocar las
+       notificaciones. Se agregó `android/app/src/main/res/raw/keep.xml`
+       con `tools:keep="@mipmap/ic_launcher"` (patrón recomendado por el
+       propio README de `flutter_local_notifications`) para que esa
+       protección sea explícita e independiente del ícono de la app.
+       Build de verificación final tras el cambio:
+       `app-release.apk (55.5MB)` generado sin errores.
     10. ⬜ Ficha de la tienda: descripciones, capturas de pantalla
         (hay material preliminar en `Capturas/`), clasificación de
         contenido, y asegurar que el disclaimer "no es un dispositivo
@@ -1862,6 +1890,43 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-22 — R8/minificación auditada y blindaje del ícono de notificaciones
+
+Punto 9 ("importante, no bloqueante pero de alto riesgo") del checklist
+de producción resuelto en la misma sesión que el último bloqueante
+crítico:
+
+* Auditoría: el Flutter Gradle Plugin ya habilita automáticamente
+  `isMinifyEnabled`/`isShrinkResources` en el build `release` (código
+  fuente verificado en `FlutterPlugin.kt` del SDK de Flutter instalado,
+  3.44.8), sin que el proyecto tuviera que configurarlo. Build limpio
+  de verificación (`flutter clean` + `flutter build apk --release`):
+  `BUILD SUCCESSFUL`, R8 corre sin warnings de "Missing class" ni
+  reglas faltantes para ninguna de las dependencias del proyecto
+  (Firebase Auth, Firestore, `health`, `flutter_local_notifications`,
+  `google_sign_in`, `sqflite`, `url_launcher`, etc.), todas aportan sus
+  propias reglas "consumer" automáticamente.
+* Se documentó explícitamente este comportamiento, antes implícito, con
+  comentarios en `android/app/build.gradle.kts` y un nuevo
+  `android/app/proguard-rules.pro` (recogido automáticamente por el
+  plugin si existe) que documenta el estado actual en vez de añadir
+  reglas `-keep` innecesarias.
+* Riesgo real detectado y corregido: `AndroidNotificationService` usa
+  `@mipmap/ic_launcher` como ícono de las notificaciones de los
+  recordatorios post-comida (roadmap punto 17, Fase B); ese recurso
+  sobrevivía al *resource shrinker* de R8 solo porque también está
+  referenciado como ícono de la app en `AndroidManifest.xml` —
+  protección accidental, no garantizada si en el futuro se cambia el
+  ícono de la app sin tocar las notificaciones (el propio README de
+  `flutter_local_notifications` advierte que, de perderse, las
+  notificaciones fallarían en silencio, sin error de compilación).
+  Nuevo `android/app/src/main/res/raw/keep.xml` con
+  `tools:keep="@mipmap/ic_launcher"` para blindar esa protección de
+  forma explícita e independiente del ícono de la app.
+* Validación final: `flutter analyze` sin issues, `flutter test`
+  126/126 pasados, y `flutter build apk --release` exitoso
+  (`app-release.apk`, 55.5MB) tras los cambios.
 
 ## 2026-10-22 — Eliminación de cuenta y datos desde la app
 

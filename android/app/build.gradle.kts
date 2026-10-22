@@ -72,6 +72,21 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // Minificación/R8 (checklist de producción, punto 9): NO se
+            // configura aquí a propósito. El Flutter Gradle Plugin
+            // (aplicado arriba) ya activa automáticamente
+            // `isMinifyEnabled`/`isShrinkResources` para este build type
+            // y agrega tanto `proguard-android-optimize.txt` como las
+            // reglas propias de Flutter y las reglas "consumer" que cada
+            // plugin Android publica por su cuenta (Firebase, health,
+            // flutter_local_notifications, etc.) — ver
+            // FlutterPlugin.kt en el SDK de Flutter. También recoge
+            // automáticamente android/app/proguard-rules.pro si existe
+            // (ver ese archivo: hoy documenta el estado, no añade
+            // reglas -keep porque ninguna ha sido necesaria). Confirmado
+            // con `flutter build apk --release`: R8 corre sin warnings
+            // de "Missing class" ni reglas faltantes para ninguna de las
+            // dependencias de este proyecto.
         }
     }
 }

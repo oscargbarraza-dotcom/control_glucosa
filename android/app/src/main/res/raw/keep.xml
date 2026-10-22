@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Checklist de producción, punto 9 (R8/minificación). El build `release`
+  ya habilita minifyEnabled/shrinkResources automáticamente a través del
+  Flutter Gradle Plugin (ver comentario en android/app/build.gradle.kts).
+
+  Este archivo protege del *resource shrinker* de R8 el ícono usado por
+  las notificaciones locales de los recordatorios de glucosa post-comida
+  (`AndroidNotificationService`, `AndroidInitializationSettings
+  ('@mipmap/ic_launcher')`, roadmap punto 17 Fase B).
+
+  Hoy ese recurso ya sobrevive al shrinking porque también está
+  referenciado como ícono de la app en AndroidManifest.xml
+  (`android:icon="@mipmap/ic_launcher"`), pero esa protección es
+  accidental: si en el futuro se cambia el ícono de la app sin tocar las
+  notificaciones, R8 podría eliminar el recurso en silencio (sin error de
+  compilación) y las notificaciones dejarían de mostrarse. Ver advertencia
+  oficial del plugin:
+  https://pub.dev/packages/flutter_local_notifications#release-build-configuration
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@mipmap/ic_launcher" />
