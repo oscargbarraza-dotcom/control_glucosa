@@ -45,6 +45,24 @@ generado a partir del análisis estático de `lib/` y `test/`.
 > `PROJECT_CONTEXT.md`, entrada "2026-10-22 — R8/minificación auditada y
 > blindaje del ícono de notificaciones".
 >
+> Nota (2026-10-22, sin cambios de código): resuelto el punto 7 del
+> checklist, validando interactivamente el `app-release.apk` (el mismo
+> build minificado del punto anterior) en un Honor real
+> (Android 16/arm64). Sin crashes en ningún flujo: persistencia SQLite
+> de los cuatro tipos de registro, gráfico de historial, login real con
+> Google/Firebase Auth, sincronización automática a Firestore
+> confirmada en la consola de Firebase, notificaciones locales de
+> recordatorios post-comida (ícono incluido, validando en hardware real
+> el blindaje `keep.xml`), y el botón "Importar desde sensor" (Health
+> Connect), que respondió con el "permiso denegado" esperado en ese
+> dispositivo. Resuelve en la práctica también los puntos 18, 20 y 22
+> de la tabla de deuda técnica más abajo (login con Google, respaldo/
+> sincronización e importación desde sensores, antes solo probados con
+> `flutter build apk --debug`, ahora con una ejecución interactiva
+> real). Detalle completo en "Historial de cambios" de
+> `PROJECT_CONTEXT.md`, entrada "2026-10-22 — Validación manual en
+> dispositivo Android físico real".
+>
 > Nota (2026-10-22, sin cambios de código/grafo): se evaluó y se
 > descartó integrar en la app distribuida un puente no oficial
 > (`HealthConnect-LibreLinkUp`) para llevar lecturas de sensores sin
@@ -1455,11 +1473,11 @@ seguimiento_glucosa/
 | 15 | Sin base para autenticación/sincronización (Firebase) | — | ✅ Resuelto (`firebase_core` inicializado en `main.dart`; SQLite sigue como almacenamiento principal) |
 | 16 | `ios/Runner/GoogleService-Info.plist` no generado por `flutterfire configure` en Windows | ios/Runner.xcodeproj/project.pbxproj | ✅ Resuelto manualmente (descargado con `firebase apps:sdkconfig IOS` y enlazado a mano en `project.pbxproj`; pendiente de verificación real en Xcode/macOS, no disponible en este entorno) |
 | 17 | Sin autenticación de usuarios | — | ✅ Resuelto (`AppUser`, `AuthRepository`/`FirebaseAuthRepository`, `AuthScreen`; correo/contraseña y Google, opcional — no bloquea el resto de la app) |
-| 18 | Inicio de sesión con Google sin probar en dispositivo/emulador real | — | ⏳ Pendiente (validado por `flutter analyze`/`flutter test`/`flutter build apk --debug`, pero no con una ejecución interactiva del flujo de OAuth) |
+| 18 | Inicio de sesión con Google sin probar en dispositivo/emulador real | — | ✅ Resuelto (2026-10-22, validado interactivamente en un Honor real con el `app-release.apk`; ver "Validación manual en dispositivo Android físico real" en `PROJECT_CONTEXT.md`) |
 | 19 | Sin respaldo/sincronización de datos entre dispositivos | — | ✅ Resuelto parcialmente (`BackupRepository`/`FirestoreBackupRepository`, botones manuales "Respaldar"/"Restaurar" en `AuthScreen`, solo con sesión iniciada; `restore()` reemplaza, no fusiona; sincronización automática/en tiempo real queda pendiente) |
-| 20 | Respaldo/restauración sin probar en dispositivo/emulador real | — | ⏳ Pendiente (validado por `flutter analyze`/`flutter test`/`flutter build apk --debug`, pero no con una ejecución interactiva contra Firestore real) |
+| 20 | Respaldo/restauración sin probar en dispositivo/emulador real | — | ✅ Resuelto (2026-10-22, sincronización automática a Firestore validada interactivamente en un Honor real: una medición nueva registrada en la app apareció sola en la consola de Firebase; ver "Validación manual en dispositivo Android físico real" en `PROJECT_CONTEXT.md`) |
 | 21 | Sin integración con sensores/CGM | — | ✅ Resuelto (`GlucoseImportRepository`/`HealthGlucoseImportRepository`, importación manual de solo lectura desde Google Health Connect/Apple Health vía el plugin `health`; botón "Importar desde sensor" en `HistoryScreen`, solo con `importRepository` inyectado) |
-| 22 | Importación desde sensores/CGM sin probar en dispositivo/emulador real | — | ⏳ Pendiente (validado por `flutter analyze`/`flutter test`/`flutter build apk --debug`, pero no con una ejecución interactiva contra Health Connect real ni con datos de prueba reales) |
+| 22 | Importación desde sensores/CGM sin probar en dispositivo/emulador real | — | ✅ Resuelto (2026-10-22, flujo completo ejercitado interactivamente en un Honor real contra Health Connect real, sin crash; terminó en "permiso denegado" porque ningún sensor/app de ese dispositivo escribe glucosa en Health Connect, resultado esperado y ya cubierto por tests; ver "Validación manual en dispositivo Android físico real" en `PROJECT_CONTEXT.md`) |
 | 23 | Perfil de usuario sin soporte multiusuario real | — | ⏳ Pendiente a sabiendas (patrón "singleton row" en `user_profile`: un único perfil por dispositivo, independiente del `uid` de Firebase Auth; suficiente para el alcance actual de la app) |
 | 24 | Sin recordatorios post-comida | — | ✅ Resuelto en Fase A (`MealGlucoseReminder`, repositorio SQLite, coordinador y diálogos in-app); notificaciones/alarmas reales fuera de la app quedan para Fase B. |
 

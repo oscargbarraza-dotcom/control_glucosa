@@ -1836,11 +1836,48 @@ Prioridad futura:
 
     Importantes, no bloqueantes pero de alto riesgo si se omiten:
 
-    7. ⬜ Validación manual real en un dispositivo Android físico
-       (Health Connect, notificaciones locales, login con Google,
-       lectura/escritura en Firestore). Hasta ahora todo lo validado
-       es `flutter analyze`/`flutter test`/build de APK, sin pruebas
-       interactivas en hardware.
+    7. ✅ Validación manual real en un dispositivo Android físico
+       (2026-10-22). Probado en un Honor real (modelo ELI-NX9, Android
+       16/API 36, arquitectura arm64) instalando directamente el
+       `app-release.apk` minificado por R8 (vía `adb install`, mismo
+       artefacto auditado en el punto 9), no un build debug. Flujos
+       verificados de punta a punta, sin ningún crash ni excepción
+       fatal en `logcat` (`FATAL EXCEPTION`/`AndroidRuntime` ausentes
+       en todo el proceso de la app):
+       - Registro y persistencia de glucosa, comida, medicamento y
+         biometría; los valores sobreviven a cerrar y reabrir la app
+         (SQLite).
+       - Pestaña "Gráfico" del historial, con datos reales.
+       - Login con Google real contra el proyecto Firebase de
+         producción `seguimiento-glucosa`: `FirebaseAuth: Notifying
+         ... about user (uid real)` confirmado en logcat.
+       - Sincronización automática a Firestore: una medición nueva
+         registrada en la app apareció en la consola de Firebase en
+         `users/{uid}/glucose_measurements` sin ninguna acción manual.
+       - Notificaciones locales de recordatorio post-comida: se
+         confirmó con `dumpsys alarm` que Android programó las dos
+         alarmas reales (`RTC_WAKEUP`, 60 y 90 min) apuntando al
+         receptor correcto de `flutter_local_notifications`; forzando
+         la hora del dispositivo se disparó la notificación real
+         ("Hora de medir tu glucosa", canal `meal_glucose_reminders`,
+         sonido activo) con el ícono de la app visible correctamente
+         (`dumpsys notification` confirmó `icon=Icon(typ=RESOURCE...)`
+         resuelto, y se verificó visualmente en la barra de
+         notificaciones) — valida en hardware real el blindaje de
+         `keep.xml` del punto 9.
+       - Botón "Importar desde sensor" (Health Connect, punto 15 del
+         roadmap): el flujo completo respondió sin errores ni crash
+         (`dumpsys package` confirma que Health Connect reconoce la
+         app y el permiso `android.permission.health.
+         READ_BLOOD_GLUCOSE` queda registrado, con `granted=false` en
+         este dispositivo); terminó en el mensaje "Permiso de lectura
+         de glucosa denegado", comportamiento esperado y ya cubierto
+         por los tests automatizados del 2026-08-20 — no hay ninguna
+         app que escriba glucosa en Health Connect en este teléfono
+         de prueba, por lo que no hay nada que leer/autorizar
+         (recordar además que la integración con LibreLink/FreeStyle
+         queda fuera de alcance por decisión ya tomada, ver entrada
+         "Decisión: no integrar el puente no oficial LibreLink").
     8. ⬜ Validación manual real en iOS/macOS con Xcode (notificaciones
        Darwin, `GoogleService-Info.plist`, permisos HealthKit). No se
        puede hacer desde este entorno Windows.
@@ -1890,6 +1927,55 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-22 — Validación manual en dispositivo Android físico real
+
+Punto 7 ("importante, no bloqueante pero de alto riesgo") del
+checklist de producción resuelto en la misma sesión que el punto 9
+(R8/minificación):
+
+* Dispositivo: Honor real (modelo `ELI-NX9`, Android 16/API 36,
+  `arm64-v8a`), conectado por USB. El primer intento de detección por
+  `adb`/`flutter devices` falló por un problema de hardware (Windows
+  reportaba "Android Composite ADB Interface" en estado
+  "Desconectado" junto a varios "Dispositivo USB desconocido (Error
+  de solicitud de descriptor de dispositivo)"); se resolvió
+  simplemente cambiando el cable USB por uno que sí transfiere datos
+  (no solo carga).
+* Se instaló directamente, vía `adb install -r`, el mismo
+  `app-release.apk` generado y auditado en el punto 9 (build con R8/
+  minificación activa), no un build debug, para que la validación
+  cubra también el artefacto real que se publicaría.
+* Flujos probados interactivamente, guiando al usuario paso a paso
+  mientras se monitoreaba `logcat`/`dumpsys` en paralelo. Sin ningún
+  `FATAL EXCEPTION`/`AndroidRuntime` del proceso de la app en toda la
+  sesión:
+  * Registro y persistencia (SQLite) de glucosa, comida, medicamento
+    y biometría; persisten tras cerrar y reabrir la app.
+  * Pestaña "Gráfico" del historial con datos reales.
+  * Login con Google real contra Firebase Auth de producción
+    (`FirebaseAuth: Notifying ... about user (uid real)` en logcat).
+  * Sincronización automática a Firestore: una medición nueva
+    registrada en la app apareció sola, sin acción manual, en
+    `users/{uid}/glucose_measurements` en la consola de Firebase.
+  * Notificaciones locales de recordatorios post-comida: `dumpsys
+    alarm` confirmó las dos alarmas reales (`RTC_WAKEUP`, offsets 60
+    y 90 min) correctamente programadas contra
+    `flutter_local_notifications.ScheduledNotificationReceiver`.
+    Adelantando manualmente la hora del dispositivo se disparó la
+    notificación real (canal `meal_glucose_reminders`, con sonido);
+    `dumpsys notification` confirmó que el ícono se resolvió como
+    recurso válido y se verificó visualmente en la barra de
+    notificaciones — valida en hardware real, de punta a punta, el
+    blindaje `keep.xml` añadido en el punto 9.
+  * Botón "Importar desde sensor" (Health Connect): terminó en
+    "Permiso de lectura de glucosa denegado", resultado esperado en
+    este dispositivo (ninguna app instalada escribe glucosa en Health
+    Connect ahí) y ya cubierto por los tests automatizados de
+    2026-08-20; no reveló ningún problema de código.
+* Deuda pendiente, fuera de alcance de esta sesión: validación
+  manual en iOS/macOS (punto 8 del checklist) sigue bloqueada por no
+  disponer de hardware Apple/Xcode en este entorno Windows.
 
 ## 2026-10-22 — R8/minificación auditada y blindaje del ícono de notificaciones
 
