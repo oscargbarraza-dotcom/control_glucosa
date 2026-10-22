@@ -7,17 +7,25 @@
       "android": {
         "default": {
           "projectId": "seguimiento-glucosa",
-          "appId": "1:371154041496:android:cd5819a71849f4da9daeed",
+          "appId": "1:371154041496:android:a098a2d8fef4be2b9daeed",
           "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "seguimiento-glucosa",
+          "appId": "1:371154041496:ios:58ff3ebdcfdcbb339daeed",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
         }
       },
       "dart": {
         "lib/firebase_options.dart": {
           "projectId": "seguimiento-glucosa",
           "configurations": {
-            "android": "1:371154041496:android:cd5819a71849f4da9daeed",
-            "ios": "1:371154041496:ios:1cd95e8a7d01632f9daeed",
-            "macos": "1:371154041496:ios:1cd95e8a7d01632f9daeed",
+            "android": "1:371154041496:android:a098a2d8fef4be2b9daeed",
+            "ios": "1:371154041496:ios:58ff3ebdcfdcbb339daeed",
+            "macos": "1:371154041496:ios:58ff3ebdcfdcbb339daeed",
             "windows": "1:371154041496:web:a1328b5811d953cf9daeed"
           }
         }

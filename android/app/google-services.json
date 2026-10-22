@@ -7,17 +7,25 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:371154041496:android:cd5819a71849f4da9daeed",
+        "mobilesdk_app_id": "1:371154041496:android:a098a2d8fef4be2b9daeed",
         "android_client_info": {
-          "package_name": "com.example.seguimiento_glucosa"
+          "package_name": "cl.ogb.seguimientoglucosa.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com",
+          "client_id": "371154041496-f2k4qqbnr9g8p343tsbcumqujjseinnu.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.example.seguimiento_glucosa",
+            "package_name": "cl.ogb.seguimientoglucosa.app",
+            "certificate_hash": "63aef9d7ebe75580949792be03b74091cbfda8bc"
+          }
+        },
+        {
+          "client_id": "371154041496-tfoc0mvo875v7ougrfs2dqrntnkerdau.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "cl.ogb.seguimientoglucosa.app",
             "certificate_hash": "3b8c8ab35ae5b2d58aaa08667978820515fd65ae"
           }
         },

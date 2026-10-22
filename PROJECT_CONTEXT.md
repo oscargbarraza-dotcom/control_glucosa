@@ -1744,20 +1744,47 @@ Prioridad futura:
 
     Bloqueantes críticos:
 
-    1. ⬜ Firma de release real. `android/app/build.gradle.kts` firma
-       el build `release` con el keystore de **debug** (hay un `TODO`
-       explícito en el archivo). Falta generar un keystore propio,
-       crear `android/key.properties` (no versionado) y actualizar
-       `signingConfigs.release` para usarlo.
-    2. ⬜ `applicationId`/bundle ID definitivos. Hoy son valores de
-       ejemplo: Android `com.example.seguimiento_glucosa`
-       (`android/app/build.gradle.kts`), iOS
-       `com.example.seguimientoGlucosa` (`ios/Runner.xcodeproj/
-       project.pbxproj`, 5 ocurrencias incl. `RunnerTests`). Google
-       Play y App Store rechazan `com.example.*`. Al cambiarlos hay
-       que regenerar y reemplazar `google-services.json` y
-       `GoogleService-Info.plist` desde la consola de Firebase con el
-       nuevo id de paquete.
+    1. ✅ Firma de release real (2026-10-22). Generado
+       `android/app/upload-keystore.jks` (RSA 2048, validez 10 000
+       días, `CN=Seguimiento Glucosa, O=OGB, C=CL`) con contraseñas
+       aleatorias en `android/key.properties` (no versionado, ya
+       cubierto por `android/.gitignore`). `build.gradle.kts` ahora
+       define `signingConfigs.release` leyendo ese archivo y cae de
+       vuelta al keystore de debug solo si `key.properties` no existe
+       en la máquina (para no romper `flutter run --release` en otros
+       checkouts). Verificado con `flutter build apk --release` +
+       `apksigner verify --print-certs`: el APK queda firmado con el
+       certificado de release (SHA-1 `63:AE:F9:D7:EB:E7:55:80:94:97:
+       92:BE:03:B7:40:91:CB:FD:A8:BC`), no con el de debug.
+    2. ✅ `applicationId`/bundle ID definitivos (2026-10-22). Nuevo
+       identificador `cl.ogb.seguimientoglucosa.app` en las 6
+       plataformas Flutter: Android (`namespace` y `applicationId` en
+       `android/app/build.gradle.kts`; paquete Kotlin de
+       `MainActivity.kt` movido de `com/example/seguimiento_glucosa`
+       a `cl/ogb/seguimientoglucosa/app`), iOS
+       (`PRODUCT_BUNDLE_IDENTIFIER` en `ios/Runner.xcodeproj/
+       project.pbxproj`, 5 ocurrencias incl. `RunnerTests`), macOS
+       (mismo archivo en `macos/`, 4 ocurrencias, + `AppInfo.xcconfig`),
+       Linux (`APPLICATION_ID` en `linux/CMakeLists.txt`) y metadata de
+       Windows (`CompanyName`/`LegalCopyright` en
+       `windows/runner/Runner.rc`, de `com.example` a `OGB`; Windows no
+       tiene un `applicationId` real equivalente). Regenerados
+       `google-services.json`, `GoogleService-Info.plist` (iOS) y
+       `lib/firebase_options.dart` vía `flutterfire configure` contra
+       el proyecto Firebase existente `seguimiento-glucosa`, que
+       registró automáticamente nuevas apps Android/iOS/macOS con el
+       id nuevo (las apps antiguas con `com.example.*` quedan huérfanas
+       en la consola de Firebase, se pueden eliminar manualmente desde
+       ahí si se desea). Huellas SHA-1 del keystore de **debug** y de
+       **release** añadidas a la nueva app Android de Firebase
+       (`firebase apps:android:sha:create`) para que el login con
+       Google siga funcionando. Pendiente menor, no bloqueante: el
+       nodo `services.appinvite_service` dentro de
+       `android/app/google-services.json` conserva una referencia
+       heredada a `com.example.seguimientoGlucosa` — es metadata del
+       backend de Firebase para la función deprecada "App Invites"
+       (no usada por esta app) y no afecta autenticación ni ninguna
+       funcionalidad actual.
     3. ⬜ Desplegar las reglas de Firestore a producción
        (`firebase deploy --only firestore:rules`). Ya documentado como
        limitación conocida desde 2026-10-20; sin esto, el esquema
@@ -1807,6 +1834,76 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-22 — Keystore de release real + `applicationId`/bundle ID definitivos
+
+Primeros dos bloqueantes críticos del checklist de producción (punto 19
+del roadmap), resueltos en la misma sesión:
+
+* **Keystore de release**: generado `android/app/upload-keystore.jks`
+  (RSA 2048, validez 10 000 días, alias `release`,
+  `CN=Seguimiento Glucosa, OU=Mobile, O=OGB, L=Santiago, ST=RM, C=CL`)
+  con `keytool`, usando contraseñas aleatorias de 24 bytes generadas
+  con `RNGCryptoServiceProvider` (no reutiliza ninguna contraseña
+  existente). Las contraseñas y la ruta del keystore quedan en
+  `android/key.properties`, que **no se versiona** (ya cubierto por
+  `key.properties` y `**/*.jks` en `android/.gitignore`).
+  `android/app/build.gradle.kts` se actualizó para leer ese archivo y
+  configurar `signingConfigs.release` dinámicamente; si
+  `key.properties` no existe en la máquina (p. ej. un checkout nuevo
+  sin el keystore), el build `release` cae de vuelta al keystore de
+  debug para no romper `flutter run --release` en otros entornos de
+  desarrollo. Verificado extremo a extremo: `flutter build apk
+  --release` genera el APK correctamente y `apksigner verify
+  --print-certs` confirma que está firmado con el certificado de
+  release (no con el de debug).
+* **`applicationId`/bundle ID definitivo**: `cl.ogb.seguimientoglucosa.app`
+  en las 6 plataformas que genera `flutter create`, reemplazando los
+  valores de ejemplo `com.example.seguimiento_glucosa`/
+  `com.example.seguimientoGlucosa`/`com.example`:
+  * Android: `namespace` y `applicationId` en
+    `android/app/build.gradle.kts`; paquete Kotlin de `MainActivity.kt`
+    movido físicamente de `android/app/src/main/kotlin/com/example/
+    seguimiento_glucosa/` a `android/app/src/main/kotlin/cl/ogb/
+    seguimientoglucosa/app/`.
+  * iOS: `PRODUCT_BUNDLE_IDENTIFIER` en
+    `ios/Runner.xcodeproj/project.pbxproj` (5 ocurrencias, incluye el
+    target `RunnerTests`).
+  * macOS: mismo archivo en `macos/Runner.xcodeproj/project.pbxproj`
+    (4 ocurrencias) y `macos/Runner/Configs/AppInfo.xcconfig`
+    (`PRODUCT_BUNDLE_IDENTIFIER` y `PRODUCT_COPYRIGHT`, de `com.example`
+    a `OGB`).
+  * Linux: `APPLICATION_ID` en `linux/CMakeLists.txt`.
+  * Windows: no tiene un identificador de paquete real equivalente;
+    se actualizó solo la metadata `CompanyName`/`LegalCopyright` en
+    `windows/runner/Runner.rc` (de `com.example` a `OGB`).
+  * Firebase: se ejecutó `flutterfire configure` contra el proyecto
+    existente `seguimiento-glucosa` con
+    `--android-package-name=cl.ogb.seguimientoglucosa.app
+    --ios-bundle-id=cl.ogb.seguimientoglucosa.app
+    --macos-bundle-id=cl.ogb.seguimientoglucosa.app`, lo que registró
+    automáticamente nuevas apps Android/iOS/macOS con el id nuevo y
+    regeneró `android/app/google-services.json`,
+    `ios/Runner/GoogleService-Info.plist` y `lib/firebase_options.dart`.
+    Las apps antiguas con `com.example.*` quedan huérfanas en la
+    consola de Firebase (no se borran automáticamente); se pueden
+    eliminar manualmente ahí si se desea, sin impacto en la app.
+  * Se registraron las huellas SHA-1 del keystore de **debug**
+    (`3b8c8ab35ae5b2d58aaa08667978820515fd65ae`) y del nuevo keystore
+    de **release** (`63aef9d7ebe75580949792be03b74091cbfda8bc`) en la
+    nueva app Android de Firebase vía `firebase apps:android:sha:create`,
+    requisito para que el login con Google siga funcionando tanto en
+    builds de desarrollo como de release.
+  * Pendiente menor no bloqueante: el nodo `services.appinvite_service`
+    dentro del `google-services.json` regenerado conserva una
+    referencia heredada a `com.example.seguimientoGlucosa` — es
+    metadata del backend de Firebase para la función deprecada
+    "App Invites" (no usada por esta app) y no afecta autenticación ni
+    ninguna otra funcionalidad.
+* **Pendiente a cargo del usuario**: no se puede compilar/probar iOS
+  ni macOS desde este entorno Windows; falta validar en Xcode que el
+  nuevo bundle id y el `GoogleService-Info.plist` regenerado funcionan
+  correctamente (ver puntos 7–8 del checklist de producción).
 
 ## 2026-10-22 — Decisión: no integrar el puente no oficial LibreLinkUp→Health Connect en la app distribuida
 

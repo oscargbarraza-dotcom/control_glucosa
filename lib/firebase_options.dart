@@ -45,34 +45,31 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyA49hCtlUd8nA3M8cacnQiZmIjgRgNabmQ',
-    appId: '1:371154041496:android:cd5819a71849f4da9daeed',
+    appId: '1:371154041496:android:a098a2d8fef4be2b9daeed',
     messagingSenderId: '371154041496',
     projectId: 'seguimiento-glucosa',
     storageBucket: 'seguimiento-glucosa.firebasestorage.app',
   );
+
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyAGnX6qOtKxSvQsnk1lFuQN0D0bjBaR1z4',
-    appId: '1:371154041496:ios:1cd95e8a7d01632f9daeed',
+    appId: '1:371154041496:ios:58ff3ebdcfdcbb339daeed',
     messagingSenderId: '371154041496',
     projectId: 'seguimiento-glucosa',
     storageBucket: 'seguimiento-glucosa.firebasestorage.app',
-    androidClientId:
-        '371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com',
-    iosClientId:
-        '371154041496-j670gohkjjcakfabastvh4h2flk0jld9.apps.googleusercontent.com',
-    iosBundleId: 'com.example.seguimientoGlucosa',
+    androidClientId: '371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com',
+    iosClientId: '371154041496-pe9v01fjiqavin1q8hu4oulc5io0vr7v.apps.googleusercontent.com',
+    iosBundleId: 'cl.ogb.seguimientoglucosa.app',
   );
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyAGnX6qOtKxSvQsnk1lFuQN0D0bjBaR1z4',
-    appId: '1:371154041496:ios:1cd95e8a7d01632f9daeed',
+    appId: '1:371154041496:ios:58ff3ebdcfdcbb339daeed',
     messagingSenderId: '371154041496',
     projectId: 'seguimiento-glucosa',
     storageBucket: 'seguimiento-glucosa.firebasestorage.app',
-    androidClientId:
-        '371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com',
-    iosClientId:
-        '371154041496-j670gohkjjcakfabastvh4h2flk0jld9.apps.googleusercontent.com',
-    iosBundleId: 'com.example.seguimientoGlucosa',
+    androidClientId: '371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com',
+    iosClientId: '371154041496-pe9v01fjiqavin1q8hu4oulc5io0vr7v.apps.googleusercontent.com',
+    iosBundleId: 'cl.ogb.seguimientoglucosa.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

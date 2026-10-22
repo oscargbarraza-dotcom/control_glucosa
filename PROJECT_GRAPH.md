@@ -3,6 +3,17 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
+> Nota (2026-10-22, sin cambios de código/grafo): resueltos los
+> primeros dos bloqueantes críticos del checklist de producción
+> (`applicationId`/bundle ID definitivo `cl.ogb.seguimientoglucosa.app`
+> y keystore de release real). Son cambios de configuración de
+> packaging/Firebase (Gradle, Xcode, `google-services.json`,
+> `GoogleService-Info.plist`, `firebase_options.dart`), sin impacto en
+> el grafo de dependencias de `lib/` ni en el flujo de navegación.
+> Detalle completo en "Historial de cambios" de `PROJECT_CONTEXT.md`,
+> entrada "2026-10-22 — Keystore de release real +
+> `applicationId`/bundle ID definitivos".
+>
 > Nota (2026-10-22, sin cambios de código/grafo): se evaluó y se
 > descartó integrar en la app distribuida un puente no oficial
 > (`HealthConnect-LibreLinkUp`) para llevar lecturas de sensores sin

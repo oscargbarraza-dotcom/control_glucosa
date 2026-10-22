@@ -1,4 +1,4 @@
-package com.example.seguimiento_glucosa
+package cl.ogb.seguimientoglucosa.app
 
 import io.flutter.embedding.android.FlutterActivity
 
