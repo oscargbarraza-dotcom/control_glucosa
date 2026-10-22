@@ -1924,12 +1924,55 @@ Prioridad futura:
        Build de verificación final tras el cambio:
        `app-release.apk (55.5MB)` generado sin errores.
     10. ⬜ Ficha de la tienda (Google Play; la ficha de App Store queda
-        pospuesta junto con el punto 8): descripciones, capturas de
-        pantalla (hay material preliminar en `Capturas/`),
-        clasificación de contenido, y asegurar que el disclaimer "no
-        es un dispositivo médico" del `README.md` también sea visible
-        **dentro de la app** (no solo en el repo).
-    11. ✅ Revisado (2026-10-22, junto con el punto 3): el proyecto de
+        pospuesta junto con el punto 8): disclaimer visible y
+        contraste de UI ya corregidos y validados con capturas en
+        dispositivo real (ver abajo); falta redactar
+        descripciones/clasificación de contenido y subir la ficha.
+        - ✅ Disclaimer visible dentro de la app (2026-10-23): hasta
+          ahora el aviso "no es un dispositivo médico" solo existía en
+          `README.md`, en `PRIVACY_POLICY.md` y en la página pública
+          de Firebase Hosting, enlazada desde `AuthScreen` — pero
+          `AuthScreen` es una pantalla opcional (el login no es
+          obligatorio), así que un usuario podía no verlo nunca.
+          Se agregó el mismo texto como `Text` fijo al final del
+          `ListView` de `HomeScreen` (pantalla de inicio, visible
+          siempre, sin acción del usuario).
+        - ✅ Corrección de contraste relacionada (2026-10-23, detectada
+          durante la revisión visual de las pantallas de ingreso de
+          datos para las capturas de la ficha): el `TabBar` de
+          Comida/Medicamentos/Biometría/Historial (en `AppBar.bottom`)
+          usaba los colores por defecto de Material 3
+          (`colorScheme.primary` para la pestaña activa/indicador,
+          `onSurfaceVariant` para la inactiva), de muy bajo contraste
+          sobre el mismo azul oscuro del `AppBar`. Se agregó
+          `tabBarTheme` en el `ThemeData` centralizado de `main.dart`
+          (texto/ícono activo e indicador en blanco, inactivo en
+          `Colors.white70`), consistente con
+          `appBarTheme.foregroundColor: Colors.white`. Corrige las 4
+          pantallas a la vez. Verificado con `flutter analyze` (sin
+          issues) y la suite completa (`flutter test`, 126/126 tests
+          pasando) tras ambos cambios.
+        - ✅ Capturas de pantalla definitivas (2026-10-23): generado
+          `app-release.apk` con ambos fixes (disclaimer + contraste
+          del `TabBar`) e instalado (`adb install -r`) en el mismo
+          Honor `ELI-NX9` fisico usado para la validacion manual del
+          punto 7. Se tomaron 7 capturas nuevas con `adb screencap`
+          guardadas en `Capturas/` (`screen_home.png`,
+          `screen_history.png`, `screen_history_chart.png`,
+          `screen_meal.png`, `screen_meds.png`,
+          `screen_meds_hist.png`, `screen_bio.png`) que reemplazan al
+          material preliminar: confirman visualmente el disclaimer al
+          final de `HomeScreen` y el `TabBar` con buen contraste
+          (texto/iconos blancos sobre azul) en las cuatro pantallas de
+          registro (Comida, Medicamentos, Biometria, Historial) y en
+          ambas pestanas de `HistoryScreen` (Lista/Grafico). Nota:
+          `Capturas/` no esta trackeada por git, por lo que estas
+          capturas son solo para validacion visual local y como
+          insumo para subir manualmente a la ficha de Google Play; no
+          se commitean salvo que se decida agregarlas explicitamente.
+        - ⬜ Pendiente: redaccion de descripcion corta/larga y
+          clasificacion de contenido de la ficha de Google Play.
+     11. ✅ Revisado (2026-10-22, junto con el punto 3): el proyecto de
         Firebase (`seguimiento-glucosa`) usa una única base Firestore
         `(default)` en modo `FIRESTORE_NATIVE`, sin ninguna base de
         datos paralela en modo test; las reglas restrictivas de

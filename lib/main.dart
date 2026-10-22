@@ -127,6 +127,19 @@ class SeguimientoGlucosaApp extends StatelessWidget {
         centerTitle: true,
         elevation: 0,
       ),
+      // El `TabBar` de Comida/Medicamentos/Biometría/Historial se
+      // coloca en `AppBar.bottom`, sobre el mismo fondo azul oscuro
+      // (`colorScheme.primary`) que el resto del AppBar. Sin este
+      // override, Material 3 usa `colorScheme.primary` como color de
+      // la pestaña activa y del indicador, y `onSurfaceVariant` (gris
+      // pensado para fondos claros) para la inactiva: ambos quedan
+      // con muy bajo contraste sobre ese mismo azul, haciendo que el
+      // texto y los íconos de las pestañas casi no se vean.
+      tabBarTheme: const TabBarThemeData(
+        labelColor: Colors.white,
+        unselectedLabelColor: Colors.white70,
+        indicatorColor: Colors.white,
+      ),
       cardTheme: CardThemeData(
         elevation: 3,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

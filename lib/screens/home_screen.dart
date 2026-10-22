@@ -623,6 +623,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: Colors.indigo,
                 onTap: _openHistoryScreen,
               ),
+              const SizedBox(height: 24),
+              // Aviso legal del checklist de producción (ficha de Google
+              // Play, punto 10): visible siempre en la pantalla de inicio,
+              // sin depender de que el usuario abra la pantalla de Cuenta
+              // (el inicio de sesión es opcional) ni el enlace externo a
+              // la política de privacidad. Mismo texto que el aviso de
+              // `PRIVACY_POLICY.md`.
+              const Text(
+                'Esta app no es un dispositivo médico. No sustituye el '
+                'diagnóstico, tratamiento o asesoramiento de un '
+                'profesional de la salud.',
+                style: TextStyle(color: Colors.black54, fontSize: 11),
+                textAlign: TextAlign.center,
+              ),
             ],
           ),
         ),
