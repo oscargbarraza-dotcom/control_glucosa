@@ -418,6 +418,16 @@ Nota sobre pruebas:
    `flutter test` y una compilación exitosa del APK, pero no todas las
    ejecuciones interactivas).
 
+## Política de privacidad
+
+Disponible en [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) y publicada
+públicamente en <https://seguimiento-glucosa.web.app/privacy-policy/>
+(exigido por Play Store/App Store), también accesible desde la
+pantalla **Cuenta** de la app. Resume qué datos se recopilan, dónde se
+almacenan (SQLite local vs. Firestore opcional), qué permisos de
+salud se solicitan y por qué, y cómo ejercer tus derechos sobre tus
+datos.
+
 ## Licencia
 
 Software propietario. Copyright (c) 2026 OGB. Todos los derechos

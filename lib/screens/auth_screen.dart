@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/app_user.dart';
 import '../services/auth_repository.dart';
+
+/// URL pública de la política de privacidad (checklist de producción,
+/// bloqueante #4), publicada vía Firebase Hosting a partir de
+/// `public/privacy-policy/index.html`. Ver también `PRIVACY_POLICY.md`
+/// en la raíz del repo (misma fuente de contenido, en Markdown).
+const String privacyPolicyUrl =
+    'https://seguimiento-glucosa.web.app/privacy-policy/';
 
 /// Pantalla de cuenta: inicio de sesión, registro, o resumen de la
 /// cuenta ya autenticada (con opción de cerrar sesión).
@@ -94,9 +102,19 @@ class _AccountView extends StatelessWidget {
               child: const Text('Cerrar sesión'),
             ),
           ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _openPrivacyPolicy,
+            child: const Text('Política de privacidad'),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _openPrivacyPolicy() async {
+    final uri = Uri.parse(privacyPolicyUrl);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 
@@ -355,9 +373,19 @@ class _AuthFormState extends State<_AuthForm> {
                 label: const Text('Continuar con Google'),
               ),
             ],
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: _openPrivacyPolicy,
+              child: const Text('Política de privacidad'),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _openPrivacyPolicy() async {
+    final uri = Uri.parse(privacyPolicyUrl);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }

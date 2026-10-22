@@ -69,6 +69,11 @@ dependencies:
   # de salud ya existentes en la plataforma, nunca escribe en ella.
   health: ^13.3.2
 
+  # Abre la política de privacidad publicada (checklist de producción,
+  # bloqueante #4) en el navegador del sistema desde la pantalla de
+  # Cuenta.
+  url_launcher: ^6.3.1
+
   # Notificaciones push locales para los recordatorios de glucosa
   # post-comida (roadmap punto 17, Fase B). `flutter_local_notifications`
   # programa y muestra las notificaciones nativas aunque la app esté en

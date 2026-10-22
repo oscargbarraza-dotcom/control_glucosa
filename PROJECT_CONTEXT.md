@@ -1797,14 +1797,20 @@ Prioridad futura:
        `(default)` ya usa las reglas restrictivas de
        `firestore.rules` (solo el propio `uid` autenticado puede leer/
        escribir sus subcolecciones).
-    4. ⬜ Política de privacidad. No existe ningún documento de
-       privacidad en el repo. Obligatoria para Play Store/App Store al
-       tratar datos de salud, y recomendable bajo la Ley 19.628
-       (Chile). Debe cubrir: qué se almacena (SQLite local vs.
-       Firestore opcional), qué permisos de salud se piden y por qué
-       (`NSHealthShareUsageDescription` en iOS, permisos Health
-       Connect en Android) y que no hay sincronización con puentes no
-       oficiales de terceros (ver decisión del 2026-10-22 arriba).
+    4. ✅ Política de privacidad (2026-10-22). Nuevo
+       `PRIVACY_POLICY.md` en la raíz del repo (qué se almacena, SQLite
+       local vs. Firestore opcional, permisos de salud y por qué se
+       piden, que no hay puentes no oficiales de terceros, derechos
+       bajo la Ley 19.628 y contacto). Publicada públicamente vía
+       Firebase Hosting (nuevo `public/privacy-policy/index.html`,
+       configurado en `firebase.json` y desplegado con `firebase
+       deploy --only hosting`) en
+       https://seguimiento-glucosa.web.app/privacy-policy/ — URL
+       exigida por los formularios de publicación de Play Store/App
+       Store. Enlazada también **dentro de la app**, en la pantalla
+       Cuenta (`AuthScreen`, nueva dependencia `url_launcher`), visible
+       tanto con sesión iniciada como en el formulario de inicio de
+       sesión/registro.
     5. ⬜ Eliminación de cuenta y datos desde la app. Play Store exige
        que, si hay cuentas (Firebase Auth), el usuario pueda eliminar
        su cuenta y sus datos desde un flujo claro. No se encontró
@@ -1846,6 +1852,41 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-22 — Política de privacidad redactada, publicada y enlazada en la app
+
+Quinto bloqueante crítico del checklist de producción resuelto en la
+misma sesión:
+
+* Redactado `PRIVACY_POLICY.md` en la raíz del repo: qué datos
+  recopila la app (mediciones de salud manuales, perfil de usuario,
+  datos importados de Health Connect/HealthKit, datos de cuenta,
+  copia de respaldo en Firestore), dónde se almacenan (SQLite local
+  como almacenamiento principal, Firestore opcional solo con sesión
+  iniciada), con quién se comparten (ningún tercero con fines
+  comerciales; solo Firebase y Health Connect/HealthKit como
+  infraestructura técnica; explícitamente ningún puente no oficial de
+  terceros, referenciando la decisión del 2026-10-22 de más abajo),
+  qué permisos se piden y por qué, cuánto tiempo se conservan los
+  datos, los derechos del usuario bajo la Ley 19.628 (Chile) y datos
+  de contacto (oscargbarraza@gmail.com).
+* Publicada públicamente en
+  **https://seguimiento-glucosa.web.app/privacy-policy/** vía Firebase
+  Hosting: nuevo `public/privacy-policy/index.html` (misma redacción
+  en HTML autocontenido) y bloque `"hosting"` agregado a
+  `firebase.json` (`"public": "public"`), desplegado con `firebase
+  deploy --only hosting -P seguimiento-glucosa`. Esta URL pública es
+  la que se declara en los formularios de publicación de Play Store y
+  App Store.
+* Enlazada **dentro de la app**: nuevo botón "Política de privacidad"
+  en `AuthScreen` (pantalla Cuenta), visible tanto en la vista de
+  cuenta ya autenticada (`_AccountView`) como en el formulario de
+  inicio de sesión/registro (`_AuthForm`), para que sea accesible se
+  tenga o no una cuenta. Usa la nueva dependencia `url_launcher`
+  (`^6.3.1`) para abrir la URL en el navegador del sistema. Verificado
+  con `flutter analyze` (sin issues), `flutter test` (122/122 pruebas
+  pasan) y `flutter build apk --release` (compila correctamente con la
+  nueva dependencia).
 
 ## 2026-10-22 — Licencia del proyecto definida
 

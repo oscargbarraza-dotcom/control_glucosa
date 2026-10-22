@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Política de privacidad — Seguimiento Glucosa</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px 20px 64px; line-height: 1.55; color: #1a1a1a; }
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; border-top: 1px solid #ddd; padding-top: 1rem; }
+  .updated { color: #555; font-size: 0.9rem; }
+  .notice { background: #fff3cd; border: 1px solid #ffe69c; border-radius: 8px; padding: 12px 16px; margin: 1rem 0; }
+  a { color: #0D47A1; }
+  code { background: #f1f1f1; padding: 1px 4px; border-radius: 4px; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<h1>Política de privacidad — Seguimiento Glucosa</h1>
+<p class="updated">Última actualización: 22 de octubre de 2026</p>
+
+<p>Esta política describe qué datos recopila, almacena y comparte la aplicación <strong>Seguimiento Glucosa</strong> (desarrollada por OGB), y qué opciones tienes sobre esos datos.</p>
+
+<div class="notice">
+<strong>Aviso importante:</strong> Seguimiento Glucosa no es un dispositivo médico ni sustituye el diagnóstico, tratamiento o asesoramiento de un profesional de la salud. La información registrada es de uso personal y bajo tu propia responsabilidad.
+</div>
+
+<h2>1. Quién trata tus datos</h2>
+<p>Responsable: OGB. Contacto para cualquier consulta sobre privacidad, tus datos o esta política: <a href="mailto:oscargbarraza@gmail.com">oscargbarraza@gmail.com</a>.</p>
+
+<h2>2. Qué datos recopila la app</h2>
+<p>La app está diseñada para que puedas usarla completamente <strong>sin crear una cuenta</strong>. Los datos que recopila dependen de qué módulos uses:</p>
+<ul>
+<li><strong>Datos de salud que tú ingresas manualmente</strong>: mediciones de glucosa (valor, momento del día, fecha/hora, comentario opcional), comidas (tipo, alimentos, cantidad, comentario), tomas de medicamentos (medicamento, dosis, unidad, comentario) y mediciones biométricas (peso, presión arterial, frecuencia cardíaca, comentario).</li>
+<li><strong>Perfil de usuario (opcional)</strong>: altura, fecha de nacimiento, sexo biológico y nombre a mostrar, usados únicamente para calcular tu IMC dentro de la app.</li>
+<li><strong>Datos de salud importados desde el sistema operativo (opcional)</strong>: si lo autorizas explícitamente, la app puede leer mediciones de glucosa ya existentes en Google Health Connect (Android) o Apple Salud/HealthKit (iOS) para evitar que las registres dos veces. La app <strong>solo lee</strong> estos datos; nunca escribe ni modifica nada en Health Connect o en Salud de Apple.</li>
+<li><strong>Datos de cuenta (opcional)</strong>: si decides iniciar sesión (con correo/contraseña o con Google), se usa tu correo electrónico y, si inicias sesión con Google, tu nombre y foto de perfil públicos de Google, únicamente para identificar tu cuenta.</li>
+<li><strong>Copia de respaldo en la nube (opcional)</strong>: solo si tienes sesión iniciada, tu historial (glucosa, comidas, medicamentos, biometría) se guarda también en Cloud Firestore (Google Firebase), asociado exclusivamente a tu cuenta.</li>
+</ul>
+<p>La app <strong>no</strong> recopila ubicación, contactos, identificadores publicitarios, ni utiliza analítica de comportamiento o publicidad de terceros.</p>
+
+<h2>3. Dónde se almacenan tus datos</h2>
+<ul>
+<li><strong>Almacenamiento principal: tu dispositivo.</strong> Todo lo que registras se guarda localmente en una base de datos SQLite dentro de tu teléfono. Si nunca inicias sesión, tus datos nunca salen de tu dispositivo.</li>
+<li><strong>Almacenamiento en la nube (opcional): Google Firebase (Firestore)</strong>, solo si inicias sesión. Cada usuario solo puede leer y escribir sus propios datos (reglas de seguridad de Firestore aplicadas a nivel de servidor); nadie más, ni siquiera otro usuario autenticado, puede acceder a tus datos.</li>
+<li>La sincronización con la nube es manual (no en tiempo real): decides cuándo respaldar o fusionar tu historial desde la pantalla de Cuenta.</li>
+</ul>
+
+<h2>4. Con quién se comparten tus datos</h2>
+<ul>
+<li><strong>No vendemos ni compartimos tus datos de salud con terceros</strong> con fines comerciales o publicitarios.</li>
+<li>Usamos los siguientes proveedores únicamente como infraestructura técnica para hacer funcionar la app (encargados de tratamiento):
+  <ul>
+  <li><strong>Google Firebase</strong> (Authentication y Cloud Firestore), para el inicio de sesión opcional y el respaldo en la nube opcional.</li>
+  <li><strong>Google Health Connect</strong> / <strong>Apple HealthKit</strong>, solo si autorizas la importación de mediciones ya existentes en tu dispositivo; la app únicamente lee esos datos, no los envía a ningún servidor.</li>
+  </ul>
+</li>
+<li>No usamos ningún puente o integración no oficial de terceros para obtener datos de sensores de glucosa (CGM). Evaluamos explícitamente esa posibilidad y decidimos no incluirla en la app por razones de seguridad y de cumplimiento de los términos de servicio de los fabricantes de sensores.</li>
+</ul>
+
+<h2>5. Permisos que solicita la app y para qué</h2>
+<ul>
+<li><strong>Lectura de glucosa en Health Connect</strong> (Android, <code>android.permission.health.READ_BLOOD_GLUCOSE</code>): para importar mediciones ya registradas por tu sensor/CGM compatible, evitando que las ingreses manualmente dos veces. Solo lectura.</li>
+<li><strong>Lectura de datos de Salud</strong> (iOS, <code>NSHealthShareUsageDescription</code>): mismo propósito que el permiso anterior, en Apple Health. La app nunca escribe en Salud.</li>
+<li><strong>Notificaciones</strong> (<code>POST_NOTIFICATIONS</code> en Android 13+): para mostrarte recordatorios locales de medir tu glucosa después de registrar una comida, si activas esa función. Las notificaciones se generan y procesan enteramente en tu dispositivo.</li>
+<li><strong>Alarmas exactas y reinicio</strong> (<code>SCHEDULE_EXACT_ALARM</code>, <code>RECEIVE_BOOT_COMPLETED</code> en Android): para que los recordatorios de medición sigan funcionando con precisión y sobrevivan a un reinicio del teléfono.</li>
+</ul>
+<p>Todos estos permisos son opcionales: puedes rechazarlos y seguir usando el resto de la app con registro manual.</p>
+
+<h2>6. Cuánto tiempo conservamos tus datos</h2>
+<p>Tus datos se conservan mientras uses la app y, si tienes sesión iniciada, mientras mantengas tu cuenta activa. Puedes eliminar tus datos locales desinstalando la app, y puedes solicitar la eliminación de tu cuenta y de tu copia en la nube escribiendo a <a href="mailto:oscargbarraza@gmail.com">oscargbarraza@gmail.com</a>.</p>
+
+<h2>7. Tus derechos</h2>
+<p>De acuerdo con la Ley N.° 19.628 sobre protección de la vida privada (Chile) y como buena práctica general, puedes en cualquier momento:</p>
+<ul>
+<li>Acceder a los datos que tenemos sobre ti.</li>
+<li>Solicitar la corrección de datos inexactos.</li>
+<li>Solicitar la eliminación de tu cuenta y de todos tus datos almacenados en la nube.</li>
+<li>Retirar tu consentimiento para el uso de la nube en cualquier momento (cerrando sesión; tus datos locales no se ven afectados).</li>
+</ul>
+<p>Para ejercer cualquiera de estos derechos, escribe a <a href="mailto:oscargbarraza@gmail.com">oscargbarraza@gmail.com</a>.</p>
+
+<h2>8. Menores de edad</h2>
+<p>La app no está dirigida específicamente a menores de edad y no recopila a sabiendas datos de menores sin el consentimiento de un adulto responsable.</p>
+
+<h2>9. Seguridad</h2>
+<p>Los datos en la nube se transmiten cifrados (HTTPS/TLS) y se protegen mediante reglas de seguridad de Firestore que restringen el acceso exclusivamente al propio usuario autenticado. Los datos locales dependen de los mecanismos de seguridad propios de tu dispositivo (bloqueo de pantalla, cifrado del sistema operativo).</p>
+
+<h2>10. Cambios a esta política</h2>
+<p>Si esta política cambia de forma relevante, actualizaremos la fecha al inicio de este documento. Te recomendamos revisarla periódicamente.</p>
+
+<h2>11. Contacto</h2>
+<p>Para cualquier consulta sobre esta política o sobre tus datos: <a href="mailto:oscargbarraza@gmail.com">oscargbarraza@gmail.com</a>.</p>
+
+</body>
+</html>
