@@ -1785,11 +1785,18 @@ Prioridad futura:
        backend de Firebase para la función deprecada "App Invites"
        (no usada por esta app) y no afecta autenticación ni ninguna
        funcionalidad actual.
-    3. ⬜ Desplegar las reglas de Firestore a producción
-       (`firebase deploy --only firestore:rules`). Ya documentado como
-       limitación conocida desde 2026-10-20; sin esto, el esquema
-       `users/{uid}/...` puede no estar protegido/activo en el
-       proyecto real.
+    3. ✅ Desplegadas las reglas de Firestore a producción
+       (2026-10-22), vía `firebase deploy --only firestore:rules -P
+       seguimiento-glucosa`. Compilaron sin errores y quedaron
+       activas (`firestore: released rules firestore.rules to
+       cloud.firestore`). Confirmado además que la base de datos del
+       proyecto está en modo `FIRESTORE_NATIVE` (no Datastore mode),
+       vía `firebase firestore:databases:list`. Esto resuelve también
+       en la práctica el punto 11 (modo producción de Firestore): no
+       existía ninguna base en "modo test" paralela; la única base
+       `(default)` ya usa las reglas restrictivas de
+       `firestore.rules` (solo el propio `uid` autenticado puede leer/
+       escribir sus subcolecciones).
     4. ⬜ Política de privacidad. No existe ningún documento de
        privacidad en el repo. Obligatoria para Play Store/App Store al
        tratar datos de salud, y recomendable bajo la Ley 19.628
@@ -1827,13 +1834,39 @@ Prioridad futura:
         contenido, y asegurar que el disclaimer "no es un dispositivo
         médico" del `README.md` también sea visible **dentro de la
         app** (no solo en el repo).
-    11. ⬜ Revisar que el proyecto de Firebase (`seguimiento-glucosa`)
-        esté en modo producción real y no en modo
-        test/desarrollo por defecto para Firestore.
+    11. ✅ Revisado (2026-10-22, junto con el punto 3): el proyecto de
+        Firebase (`seguimiento-glucosa`) usa una única base Firestore
+        `(default)` en modo `FIRESTORE_NATIVE`, sin ninguna base de
+        datos paralela en modo test; las reglas restrictivas de
+        `firestore.rules` ya están desplegadas y activas.
 
 ---
 
 # Historial de cambios
+
+## 2026-10-22 — Reglas de Firestore desplegadas a producción
+
+Tercer bloqueante crítico del checklist de producción resuelto en la
+misma sesión:
+
+* Ejecutado `firebase deploy --only firestore:rules -P
+  seguimiento-glucosa`: `firestore.rules` compiló sin errores y quedó
+  liberado como la versión activa en el proyecto real
+  (`firestore: released rules firestore.rules to cloud.firestore`).
+  Esto cierra la limitación conocida documentada desde 2026-10-20
+  (las reglas existían en el repo pero no se había confirmado su
+  despliegue al proyecto real).
+* Verificado con `firebase firestore:databases:list -P
+  seguimiento-glucosa` que el proyecto tiene una única base
+  `(default)` en modo `FIRESTORE_NATIVE` (no Datastore mode) y que no
+  existe ninguna base paralela en modo test/desarrollo. Con esto
+  también se resuelve en la práctica el punto 11 del checklist ("modo
+  producción de Firestore"): la única base del proyecto ya usa las
+  reglas restrictivas de `firestore.rules` (cada usuario autenticado
+  solo puede leer/escribir sus propias subcolecciones bajo
+  `users/{uid}/...`).
+* No hubo cambios de código ni de reglas; fue puramente un paso de
+  despliegue/infraestructura pendiente.
 
 ## 2026-10-22 — Keystore de release real + `applicationId`/bundle ID definitivos
 
