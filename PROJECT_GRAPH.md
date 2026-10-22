@@ -3,6 +3,36 @@
 Grafo de dependencias y flujo de navegación del proyecto `seguimiento_glucosa`,
 generado a partir del análisis estático de `lib/` y `test/`.
 
+> Nota (2026-10-23, sin cambios de código/grafo): avanzado el punto 10
+> del checklist de producción (ficha de Google Play) con la redacción
+> completa de categoría, descripción corta/larga y una guía de
+> respuestas para el cuestionario de clasificación de contenido
+> (IARC), todo en el nuevo `GOOGLE_PLAY_LISTING.md`. Es contenido de
+> producto/tienda sin ningún cambio en `lib/` ni en `test/`. Detalle
+> completo en "Historial de cambios" de `PROJECT_CONTEXT.md`, entrada
+> "2026-10-23 — Redacción completa de la ficha de Google Play".
+>
+> Actualizado el 2026-10-23 (cambios de código menores, sin alterar
+> el grafo de widgets ya documentado abajo): resueltos el disclaimer
+> legal y un problema de contraste detectados al preparar las
+> capturas de esa misma ficha. (1) `HomeScreen.build()` agrega, al
+> final de la `Column` ya documentada más abajo, un `Text` fijo con
+> el aviso "Esta app no es un dispositivo médico..." (mismo texto que
+> `PRIVACY_POLICY.md`), visible siempre sin depender de que el
+> usuario abra `AuthScreen` (el login es opcional). (2)
+> `_buildTheme()` en `lib/main.dart` agrega `tabBarTheme:
+> TabBarThemeData(labelColor: Colors.white, unselectedLabelColor:
+> Colors.white70, indicatorColor: Colors.white)` al `ThemeData`
+> centralizado, corrigiendo el bajo contraste por defecto de Material
+> 3 en el `TabBar` de `AppBar.bottom` (pestañas
+> Comida/Medicamentos/Biometría/Historial) sobre el fondo azul
+> oscuro del `AppBar`; corrige las 4 pantallas a la vez sin tocar su
+> código individual. Ninguno de los dos cambios altera firmas
+> públicas, constructores ni el árbol de widgets ya documentado en
+> la sección 2. Detalle completo en "Historial de cambios" de
+> `PROJECT_CONTEXT.md`, entrada del punto 10 del checklist (commit
+> `d7a8b63`).
+>
 > Nota (2026-10-22, sin cambios de código/grafo): **decisión de
 > producto** — la versión 1.0 se publica solo en Google Play/Android;
 > la validación manual en iOS/macOS (punto 8 del checklist de
@@ -794,7 +824,11 @@ HomeScreen (StatefulWidget)                  [lib/screens/home_screen.dart]
                 ├─ MenuButton(icon: restaurant,    title: 'Comida', onTap: _openMealScreen)
                 ├─ MenuButton(icon: medication,    title: 'Medicamentos', onTap: _openMedicationScreen)
                 ├─ MenuButton(icon: favorite,      title: 'Biometría', onTap: _openBiometricScreen)
-                └─ MenuButton(icon: show_chart,    title: 'Historial', onTap: _openHistoryScreen)
+                ├─ MenuButton(icon: show_chart,    title: 'Historial', onTap: _openHistoryScreen)
+                └─ Text('Esta app no es un dispositivo médico...')
+                      # aviso legal fijo (punto 10 del checklist, ficha de Google
+                      # Play), siempre visible, sin depender de AuthScreen (login
+                      # opcional); mismo texto que PRIVACY_POLICY.md
 
 _GlucoseCard (StatelessWidget, privado)      [lib/screens/home_screen.dart]
  └─ build() → Card

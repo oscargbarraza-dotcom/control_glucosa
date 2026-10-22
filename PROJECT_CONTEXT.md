@@ -2000,6 +2000,33 @@ Prioridad futura:
 
 # Historial de cambios
 
+## 2026-10-23 — Sincronización de `PROJECT_GRAPH.md` y limpieza de build
+
+Cierre de sesión: se sincronizó `PROJECT_GRAPH.md` con los cambios de
+código ya hechos (commit `d7a8b63`, disclaimer + contraste del
+`TabBar`) que todavía no estaban reflejados ahí, y se limpiaron los
+artefactos de compilación acumulados durante la sesión.
+
+* `PROJECT_GRAPH.md`: se agregó una nota de cabecera (mismo patrón de
+  las notas "Actualizado el ...") documentando (1) el nuevo `Text` de
+  disclaimer al final de la `Column` de `HomeScreen.build()` y (2) el
+  `tabBarTheme: TabBarThemeData(...)` agregado a `_buildTheme()` en
+  `lib/main.dart`. Se actualizó también el árbol de widgets detallado
+  de la sección 2 (`HomeScreen.build()`) para incluir ese `Text` como
+  último hijo de la `Column`. Se agregó además la nota correspondiente
+  a la redacción de la ficha de Google Play (ver entrada siguiente).
+* Limpieza de artefactos: se ejecutó `flutter clean` (confirmado
+  explícitamente con el usuario, ya que borra `build/`, incluido el
+  `app-release.apk` usado para las capturas y la validación en el
+  Honor físico) seguido de `flutter pub get` para restaurar
+  `.dart_tool/` y las dependencias. `build/` pasó de ~1003 MB a ~71 MB
+  (regenerados solo por `pub get`/`flutter test`, ambos ignorados por
+  git). Se verificó explícitamente que el proyecto sigue sano tras la
+  limpieza: `flutter analyze` sin issues y `flutter test` con 126/126
+  tests pasando.
+* No se tocó `Capturas/` (sigue sin trackear por git, intencional) ni
+  ningún archivo de código fuente.
+
 ## 2026-10-23 — Redacción completa de la ficha de Google Play
 
 Avance del punto 10 del checklist de producción (ficha de tienda),
