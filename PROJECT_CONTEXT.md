@@ -1987,6 +1987,26 @@ Prioridad futura:
           `PRIVACY_POLICY.md`). No se completó el cuestionario IARC
           en sí dentro de Play Console porque solo el titular de la
           cuenta de desarrollador puede hacerlo.
+        - ✅ Assets gráficos obligatorios (2026-10-23): detectado que
+          faltaban dos imágenes exigidas por Play Console y no
+          cubiertas por `GOOGLE_PLAY_LISTING.md` (distintas del
+          ícono de la app instalada): el ícono de alta resolución
+          de la ficha (512x512) y el gráfico destacado/*feature
+          graphic* (1024x500). Se creó
+          `tool/generate_play_store_assets.py`, que reutiliza el
+          mismo estilo de marca (gota roja sobre fondo azul
+          degradado) de `tool/generate_icon_assets.py` para generar
+          ambos de forma reproducible en `store_assets/` (ignorado
+          por git, igual que `Capturas/`). Documentado en la nueva
+          sección 0 de `GOOGLE_PLAY_LISTING.md`.
+        - ⚠️ Riesgo detectado en las 7 capturas ya tomadas
+          (2026-10-23): son 1200x2664 px (relación de aspecto
+          ≈2.22:1); Play Console limita las capturas de teléfono a
+          un máximo de 2:1, así que podrían ser rechazadas al
+          subirlas. Documentado como advertencia explícita en la
+          sección 6 de `GOOGLE_PLAY_LISTING.md`, con la indicación de
+          recortar/reencuadrar (p. ej. a 1200x2400) si la consola las
+          rechaza. No se regeneraron las capturas en esta sesión.
         - ⬜ Pendiente (acción manual, fuera de este repositorio):
           subir todo lo anterior a Play Console (ver sección 6 de
           `GOOGLE_PLAY_LISTING.md`).
@@ -1999,6 +2019,51 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-23 — Assets gráficos faltantes para la ficha de Google Play
+
+Continuación del punto 10 del checklist de producción: al revisar qué
+quedaba pendiente para la subida a Play Console, se detectó que
+`GOOGLE_PLAY_LISTING.md` no cubría dos imágenes que Play Console
+exige de forma obligatoria y que son distintas del ícono de la app
+instalada en el dispositivo (ese lo sigue generando
+`flutter_launcher_icons` a partir de `assets/icon/icon.png`):
+
+* El **ícono de alta resolución** de la ficha (PNG 512x512).
+* El **gráfico destacado** / *feature graphic* (PNG/JPEG 1024x500,
+  sin canal alfa).
+
+* Se creó `tool/generate_play_store_assets.py`, que reutiliza las
+  funciones de `tool/generate_icon_assets.py` (degradado azul, gota
+  roja con brillo) para que ambos assets sean visualmente
+  consistentes con el ícono real de la app, en vez de ser imágenes
+  inventadas aparte. El ícono de 512x512 se obtiene reescalando
+  `assets/icon/icon.png`; el gráfico destacado compone la gota de
+  marca junto al nombre de la app y una tagline sobre un fondo
+  rectangular con el mismo degradado/viñeta del ícono circular. El
+  tamaño de fuente del título se ajusta dinámicamente para no
+  cortarse fuera del lienzo (se detectó y corrigió ese bug visual
+  durante la generación: con un tamaño fijo, "Seguimiento Glucosa"
+  no cabía en el ancho disponible).
+* Salida en `store_assets/` (`play_store_icon_512.png`,
+  `feature_graphic_1024x500.png`), agregado a `.gitignore` por ser
+  contenido regenerable cuyo único destino es la subida manual a
+  Play Console (mismo criterio ya aplicado a `Capturas/`).
+* Se detectó además, sin corregirlo en esta sesión, un riesgo en las
+  7 capturas de pantalla ya tomadas: miden 1200x2664 px (relación de
+  aspecto ≈2.22:1), mientras Play Console limita las capturas de
+  teléfono a un máximo de 2:1 entre el lado largo y el corto: podrían
+  ser rechazadas al subirlas.
+* `GOOGLE_PLAY_LISTING.md`: nueva sección 0 documentando ambos assets
+  y cómo regenerarlos; sección 6 (checklist de subida) actualizada
+  con los dos archivos nuevos y una advertencia explícita sobre la
+  relación de aspecto de las capturas, con la indicación de
+  recortarlas/reencuadrarlas (p. ej. a 1200x2400) si Play Console las
+  rechaza.
+* Verificado tras los cambios: `flutter analyze` sin issues (los
+  archivos nuevos son Python/Markdown, no afectan al análisis de
+  Dart); el script se ejecutó dos veces sin errores
+  (`python tool/generate_play_store_assets.py`).
 
 ## 2026-10-23 — Sincronización de `PROJECT_GRAPH.md` y limpieza de build
 

@@ -44,6 +44,12 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Assets gráficos generados para la ficha de Google Play (ícono
+# 512x512 + gráfico destacado 1024x500). Regenerables con
+# `python tool/generate_play_store_assets.py`; su único destino es la
+# subida manual a Play Console (ver GOOGLE_PLAY_LISTING.md, sección 0).
+/store_assets/
+
 # Firebase (proyecto "seguimiento-glucosa")
 # Nota: lib/firebase_options.dart, android/app/google-services.json y
 # ios/Runner/GoogleService-Info.plist SÍ se versionan intencionalmente.

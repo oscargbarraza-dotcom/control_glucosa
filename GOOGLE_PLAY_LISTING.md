@@ -7,6 +7,31 @@ Este documento es el borrador fuente; la subida final a la consola es
 manual (ver punto 10 del checklist de producción en
 `PROJECT_CONTEXT.md`).
 
+## 0. Assets gráficos obligatorios (ícono y gráfico destacado)
+
+Además del contenido textual de este documento, Play Console exige
+dos imágenes que **no** son el ícono de la app instalada en el
+dispositivo (ese lo genera `flutter_launcher_icons` a partir de
+`assets/icon/icon.png`, ver `tool/generate_icon_assets.py`):
+
+* **Ícono de alta resolución** para la ficha: PNG de 512x512.
+* **Gráfico destacado** (*feature graphic*): PNG/JPEG de 1024x500,
+  sin canal alfa.
+
+Ambos se generan reutilizando el mismo estilo de marca (gota roja
+sobre fondo azul degradado) con:
+
+```
+python tool/generate_play_store_assets.py
+```
+
+Salida en `store_assets/` (no trackeado por git, igual que
+`Capturas/`, ya que es contenido regenerable y su único destino es la
+subida manual a Play Console):
+
+* `store_assets/play_store_icon_512.png`
+* `store_assets/feature_graphic_1024x500.png`
+
 ## 1. Categoría de la app
 
 **Categoría:** Salud y forma física (*Health & Fitness*).
@@ -143,9 +168,17 @@ sentido para este caso de uso.
       con las respuestas de la sección 4 y confirmar el resultado
       emitido por el sistema.
 - [ ] Configurar el público objetivo según la sección 5.
-- [ ] Subir las 7 capturas definitivas desde `Capturas/` (no
-      trackeadas por git, ver punto 10 del checklist en
-      `PROJECT_CONTEXT.md`).
+- [ ] Subir el ícono de 512x512 y el gráfico destacado 1024x500
+      desde `store_assets/` (sección 0; regenerable, no trackeado
+      por git).
+- [ ] Subir las 7 capturas desde `Capturas/` (no trackeadas por git,
+      ver punto 10 del checklist en `PROJECT_CONTEXT.md`). **Atención:**
+      las capturas actuales son 1200x2664 px (relación de aspecto
+      ≈2.22:1); Play Console limita las capturas de teléfono a un
+      máximo de 2:1 entre el lado largo y el corto, así que **podrían
+      ser rechazadas al subirlas**. Si la consola las rechaza,
+      recortar/reencuadrar a una relación ≤2:1 (por ejemplo
+      1200x2400) antes de volver a intentar la subida.
 - [ ] Completar el formulario de "Seguridad de los datos" (Data
       safety) en Play Console con base en `PRIVACY_POLICY.md`
       (secciones 2-5): qué datos se recopilan, si se comparten
