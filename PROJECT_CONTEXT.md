@@ -1997,19 +1997,56 @@ Prioridad futura:
           mismo estilo de marca (gota roja sobre fondo azul
           degradado) de `tool/generate_icon_assets.py` para generar
           ambos de forma reproducible en `store_assets/` (ignorado
-          por git, igual que `Capturas/`). Documentado en la nueva
-          sección 0 de `GOOGLE_PLAY_LISTING.md`.
-        - ⚠️ Riesgo detectado en las 7 capturas ya tomadas
-          (2026-10-23): son 1200x2664 px (relación de aspecto
-          ≈2.22:1); Play Console limita las capturas de teléfono a
-          un máximo de 2:1, así que podrían ser rechazadas al
-          subirlas. Documentado como advertencia explícita en la
-          sección 6 de `GOOGLE_PLAY_LISTING.md`, con la indicación de
-          recortar/reencuadrar (p. ej. a 1200x2400) si la consola las
-          rechaza. No se regeneraron las capturas en esta sesión.
+          por git). Documentado en la nueva sección 0 de
+          `GOOGLE_PLAY_LISTING.md`.
+        - ✅ Corregido el riesgo de relación de aspecto en las 7
+          capturas (2026-10-23): eran 1200x2664 px (≈2.22:1), por
+          encima del límite 2:1 de Play Console para capturas de
+          teléfono. Se creó `tool/fix_screenshot_aspect_ratio.py`,
+          que ensancha el lienzo a 1332x2664 (2.000:1 exacto)
+          añadiendo relleno lateral del color de fondo de cada fila
+          (los bordes izquierdo/derecho originales son fondo sólido
+          sin contenido, verificado por comparación de píxeles), sin
+          recortar ni distorsionar el contenido real. Salida en
+          `Capturas/play_store/`. Verificado visualmente: sin
+          costuras ni distorsión. `GOOGLE_PLAY_LISTING.md` sección 6
+          actualizada para apuntar a `Capturas/play_store/` en vez de
+          `Capturas/`.
+        - ✅ AAB firmado generado (2026-10-23): `flutter build appbundle
+          --release` exitoso (`BUILD SUCCESSFUL`), firmado con el
+          keystore de release real (`android/app/upload-keystore.jks`
+          vía `android/key.properties`, no con el de debug). Salida en
+          `build/app/outputs/bundle/release/app-release.aab` (55.5 MB),
+          el artefacto que efectivamente se sube a Play Console (en
+          vez del APK usado hasta ahora solo para pruebas en el Honor
+          físico). No versionado (`build/` ya está en `.gitignore`);
+          se regenera con ese mismo comando antes de cada subida.
+        - ✅ APK de release regenerado para compartir (2026-10-23): tras
+          los cambios anteriores, `flutter build apk --release` exitoso
+          (`build\app\outputs\flutter-apk\app-release.apk`, 55.5 MB).
+          Verificado con `apksigner verify --print-certs` que está
+          firmado con el certificado de release real (mismo `CN=
+          Seguimiento Glucosa, OU=Mobile, O=OGB...` que el AAB), no con
+          el de debug. Este archivo es para instalación directa/
+          compartir por fuera de Play Store (p. ej. WhatsApp, enlace
+          directo); el AAB sigue siendo el artefacto para subir a Play
+          Console. Tampoco se versiona (`build/` en `.gitignore`).
+        - ✅ Corregida una inexactitud real en `.gitignore` (2026-10-23):
+          varias entradas previas de este checklist y del historial
+          daban por hecho que `Capturas/` ya estaba ignorado por git
+          "igual que `store_assets/`", pero verificado con
+          `git status`/`git check-ignore` eso nunca fue cierto —
+          `.gitignore` no tenía ninguna entrada para `Capturas/`, solo
+          nadie había ejecutado `git add` sobre esas imágenes. Se
+          agregó `/Capturas/` a `.gitignore` (mismo bloque que
+          `/store_assets/`), cubriendo tanto las 7 capturas originales
+          como `Capturas/play_store/`. Verificado con `git status`:
+          `Capturas/` deja de aparecer como contenido sin trackear.
         - ⬜ Pendiente (acción manual, fuera de este repositorio):
-          subir todo lo anterior a Play Console (ver sección 6 de
-          `GOOGLE_PLAY_LISTING.md`).
+          crear la cuenta de Google Play Console ($25 USD, pago
+          único) y subir todo lo anterior (ver sección 6 de
+          `GOOGLE_PLAY_LISTING.md` y la guía de publicación entregada
+          al usuario).
      11. ✅ Revisado (2026-10-22, junto con el punto 3): el proyecto de
         Firebase (`seguimiento-glucosa`) usa una única base Firestore
         `(default)` en modo `FIRESTORE_NATIVE`, sin ninguna base de
@@ -2064,6 +2101,54 @@ instalada en el dispositivo (ese lo sigue generando
   archivos nuevos son Python/Markdown, no afectan al análisis de
   Dart); el script se ejecutó dos veces sin errores
   (`python tool/generate_play_store_assets.py`).
+
+## 2026-10-23 — Corrección de la relación de aspecto de las capturas
+
+Al preparar la subida real a Play Console se confirmó con la
+documentación oficial de Google (soporte de Play Console, artículo
+"Add preview assets to showcase your app") el límite de relación de
+aspecto 2:1 para capturas de teléfono detectado en la sesión anterior,
+y se resolvió en vez de dejarlo solo documentado como riesgo:
+
+* Se creó `tool/fix_screenshot_aspect_ratio.py`. En vez de recortar
+  contenido (cada una de las 7 capturas tiene botones/texto en
+  posiciones Y distintas, así que un recorte vertical con un margen
+  fijo habría cortado contenido real en algunas), el script ensancha
+  el **ancho** del lienzo de 1200 a 1332 px (relación exacta 2.000:1)
+  añadiendo relleno lateral que replica el píxel de borde de cada
+  fila. Esto es seguro porque se verificó por comparación de píxeles
+  que los bordes izquierdo/derecho originales de las 7 capturas son
+  fondo sólido sin contenido (columna 0 idéntica o casi idéntica a la
+  columna 20, diferencia máxima de 8 en el canal RGB, atribuible a
+  compresión PNG).
+* Salida en `Capturas/play_store/`, para no sobrescribir los
+  originales ni mezclar con `Screenshot_1.png`/capturas de WhatsApp
+  que no son parte de la ficha. Verificado visualmente (descripción
+  de imagen) que el resultado no tiene costuras ni distorsión
+  visible.
+* `GOOGLE_PLAY_LISTING.md` sección 6 actualizada: el checklist de
+  subida ahora apunta a `Capturas/play_store/` en vez de `Capturas/`,
+  con el comando de regeneración.
+* Nota de cierre de sesión: en su momento se asumió que `Capturas/`
+  ya estaba en `.gitignore`; no era así (ver entrada de más abajo,
+  "Corrección de `.gitignore`"), así que se corrige aquí la
+  afirmación: con ese fix, tanto `Capturas/` como `Capturas/
+  play_store/` quedan ignorados por git.
+* De paso se confirmó que falta crear la cuenta de Google Play
+  Console ($25 USD, pago único) antes de poder subir nada; ese paso es
+  manual y queda fuera de este repositorio. Se entregó al usuario una
+  guía paso a paso de publicación (categoría, ficha, assets gráficos,
+  capturas corregidas, cuestionario IARC, público objetivo, Data
+  safety, generación del AAB firmado) basada en el contenido ya
+  redactado en `GOOGLE_PLAY_LISTING.md`.
+* Como parte de esa guía se generó también el artefacto final: `flutter
+  build appbundle --release` (`BUILD SUCCESSFUL`), firmado con el
+  keystore de release (`android/key.properties`, confirmado por
+  contenido antes de lanzar el build: alias `release`, `storeFile`
+  `upload-keystore.jks`), no con el de debug. Salida en
+  `build/app/outputs/bundle/release/app-release.aab` (55.5 MB), listo
+  para la pestaña "Producción" de Play Console una vez exista la
+  cuenta de desarrollador.
 
 ## 2026-10-23 — Sincronización de `PROJECT_GRAPH.md` y limpieza de build
 

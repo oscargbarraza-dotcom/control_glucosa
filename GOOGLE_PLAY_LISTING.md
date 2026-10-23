@@ -171,14 +171,21 @@ sentido para este caso de uso.
 - [ ] Subir el ícono de 512x512 y el gráfico destacado 1024x500
       desde `store_assets/` (sección 0; regenerable, no trackeado
       por git).
-- [ ] Subir las 7 capturas desde `Capturas/` (no trackeadas por git,
-      ver punto 10 del checklist en `PROJECT_CONTEXT.md`). **Atención:**
-      las capturas actuales son 1200x2664 px (relación de aspecto
-      ≈2.22:1); Play Console limita las capturas de teléfono a un
-      máximo de 2:1 entre el lado largo y el corto, así que **podrían
-      ser rechazadas al subirlas**. Si la consola las rechaza,
-      recortar/reencuadrar a una relación ≤2:1 (por ejemplo
-      1200x2400) antes de volver a intentar la subida.
+- [ ] Subir las 7 capturas desde `Capturas/play_store/` (no
+      trackeadas por git, ver punto 10 del checklist en
+      `PROJECT_CONTEXT.md`). Las capturas originales en `Capturas/`
+      son 1200x2664 px (relación de aspecto ≈2.22:1); Play Console
+      limita las capturas de teléfono a un máximo de 2:1 entre el
+      lado largo y el corto, por lo que serían rechazadas al subirlas
+      directamente. `tool/fix_screenshot_aspect_ratio.py` genera en
+      `Capturas/play_store/` la versión corregida de cada una
+      (1332x2664, relación exacta 2:1) añadiendo relleno lateral del
+      mismo color de fondo —sin recortar ni distorsionar el
+      contenido real, ya que los bordes izquierdo/derecho originales
+      son fondo sólido—. Regenerar con:
+      ```
+      python tool/fix_screenshot_aspect_ratio.py
+      ```
 - [ ] Completar el formulario de "Seguridad de los datos" (Data
       safety) en Play Console con base en `PRIVACY_POLICY.md`
       (secciones 2-5): qué datos se recopilan, si se comparten
