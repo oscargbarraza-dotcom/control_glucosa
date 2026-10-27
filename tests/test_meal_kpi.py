@@ -78,3 +78,32 @@ def test_boundary_counts_render_as_plain_numbers(measured):
     first = milestone_groups({S.MANUAL: kpis(measured=measured)})[0]
 
     assert first[0].value == f"{measured} de 23"
+
+
+# ---------------------------------------------------------------- L-1 y L-4
+def test_without_meals_the_help_shows_a_dash_instead_of_a_zero_tolerance():
+    empty = milestone_groups(
+        {S.MANUAL: kpis(eligible=0, measured=0, pending=0, not_registered=0, tolerance=0)}
+    )[0]
+
+    assert "tolerancia: —" in empty[0].tip and "±0" not in empty[0].tip
+    assert empty[0].value == "0 de 0"
+
+
+def test_with_meals_the_configured_tolerance_is_still_shown():
+    first = milestone_groups({S.MANUAL: kpis(tolerance=5)})[0]
+
+    assert "tolerancia: ±5 min" in first[0].tip
+
+
+def test_the_shared_measurement_note_is_in_the_help_of_the_measurement_cards():
+    note = "Una misma medición puede aparecer asociada a más de una comida cercana"
+    groups = milestone_groups({S.MANUAL: kpis(), S.IMPORTED: kpis()})
+
+    assert all(note in group[0].tip for group in groups)
+
+
+def test_the_counts_do_not_change_when_the_note_is_added():
+    first = milestone_groups({S.MANUAL: kpis(measured=4, eligible=9, pending=2)})[0]
+
+    assert [c.value for c in first] == ["4 de 9", "9", "2"]

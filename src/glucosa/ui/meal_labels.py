@@ -2,12 +2,18 @@
 
 Rotulan siempre la fuente y distinguen estados que no deben confundirse: «sin medición manual
 registrada», «sin datos del sensor», «export fuera de cobertura», «hueco del sensor» y «hito
-pendiente». Nunca hablan de cumplimiento de recordatorios ni de causalidad.
+pendiente». Para las mediciones de Firebase se separan además tres situaciones: «Fuente no
+disponible» (la lectura falló), «Sin mediciones en Firebase» (la colección está vacía) y «Sin
+medición … registrada» (hay mediciones, pero ninguna cerca). Nunca hablan de cumplimiento de
+recordatorios ni de causalidad.
 """
+
+from enum import StrEnum
 
 from glucosa.analytics.meal_glucose import Window
 from glucosa.analytics.meal_milestones import MilestoneResult, MilestoneStatus
 from glucosa.analytics.meal_readings import ReadingSource
+from glucosa.ui.glucose_sources import SourceStatus
 
 SOURCE_NAMES: dict[ReadingSource, str] = {
     ReadingSource.MANUAL: "Manual (Firebase)",
@@ -28,6 +34,24 @@ WINDOW_LABELS: dict[Window, str] = {
     Window.POST: "Posterior (+5 a +180 min)",
 }
 MINUS = "−"
+
+UNAVAILABLE_TEXT = "Fuente no disponible"
+EMPTY_TEXT = "Sin mediciones en Firebase"
+# Las mediciones manuales e importadas salen de la misma lectura de Firebase.
+FIREBASE_SOURCES = frozenset({ReadingSource.MANUAL, ReadingSource.IMPORTED})
+
+
+class FirebaseState(StrEnum):
+    AVAILABLE = "available"  # la lectura funcionó y hay mediciones
+    EMPTY = "empty"  # la lectura funcionó y la colección está vacía
+    UNAVAILABLE = "unavailable"  # la lectura falló o no hay sesión: no se sabe si hay mediciones
+
+
+def firebase_state(status: SourceStatus, record_count: int) -> FirebaseState:
+    """Estado de la fuente de mediciones; si la lectura falló, los registros no cuentan."""
+    if status is not SourceStatus.OK:
+        return FirebaseState.UNAVAILABLE
+    return FirebaseState.AVAILABLE if record_count else FirebaseState.EMPTY
 
 
 SECONDS_PER_MINUTE = 60
@@ -65,8 +89,19 @@ STATUS_LABELS: dict[MilestoneStatus, str] = {
 }
 
 
-def milestone_text(result: MilestoneResult) -> str:
-    """Texto de un hito: la lectura más cercana (valor y desfase) o el motivo de su ausencia."""
+def milestone_text(
+    result: MilestoneResult, firebase: FirebaseState = FirebaseState.AVAILABLE
+) -> str:
+    """Texto de un hito: la lectura más cercana (valor y desfase) o el motivo de su ausencia.
+
+    ``firebase`` solo afecta a las series de Firebase. Un hito pendiente es un hecho de tiempo y
+    no depende de la fuente; el sensor tampoco depende de Firebase.
+    """
+    if result.source in FIREBASE_SOURCES and result.status is not MilestoneStatus.PENDING:
+        if firebase is FirebaseState.UNAVAILABLE:
+            return UNAVAILABLE_TEXT
+        if firebase is FirebaseState.EMPTY and result.status is MilestoneStatus.NOT_REGISTERED:
+            return EMPTY_TEXT
     if result.status is MilestoneStatus.MEASURED and result.reading is not None:
         value = result.reading.reading.value
         return f"{value} mg/dL ({signed_minutes(result.offset_minutes or 0, 0)} del hito)"

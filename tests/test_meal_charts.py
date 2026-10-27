@@ -42,7 +42,14 @@ def traces(fig):
 
 
 def figure_for(
-    readings, *, tolerance=10, show_scans=False, specs=(("a", 0),), selected="a", range_=(70, 180)
+    readings,
+    *,
+    tolerance=10,
+    show_scans=False,
+    specs=(("a", 0),),
+    selected="a",
+    range_=(70, 180),
+    **kwargs,
 ):
     association = associate_meals(
         meals(*specs),
@@ -60,6 +67,7 @@ def figure_for(
         sources=frozenset({S.MANUAL, S.IMPORTED, S.SENSOR}),
         show_scans=show_scans,
         target_range=range_,
+        **kwargs,
     )
 
 
@@ -301,3 +309,68 @@ def test_bar_charts_leave_room_on_the_right_for_their_value_labels():
     for fig in (types, foods):
         low, high = fig.layout.xaxis.range
         assert low == 0 and high > max(fig.data[0].x)
+
+
+# ------------------------------------------------------------- etiquetas (L-2)
+def annotation_by_text(fig, start):
+    return next(a for a in fig.layout.annotations if a.text.startswith(start))
+
+
+def test_the_neighbor_label_is_short_and_anchored_below_the_window_labels():
+    fig = figure_for([manual(10)], specs=(("a", 0), ("b", -8)))
+
+    neighbor = annotation_by_text(fig, "Otra comida")
+    window_labels = [annotation_by_text(fig, name) for name in ("Previa", "Al comer", "Posterior")]
+    assert neighbor.text == "Otra comida −8 min"
+    assert neighbor.yanchor == "top" and neighbor.y < min(a.y for a in window_labels)
+    assert neighbor.textangle == -90
+
+
+def test_the_neighbor_type_stays_available_in_the_hover_text():
+    fig = figure_for([manual(10)], specs=(("a", 0), ("b", 45)))
+
+    neighbor = annotation_by_text(fig, "Otra comida")
+    assert "(" in neighbor.hovertext and neighbor.hovertext.endswith("+45 min")
+
+
+def test_the_neighbor_label_is_short_enough_to_fit_under_the_window_labels():
+    fig = figure_for([manual(10)], specs=(("a", 0), ("b", -50)))
+
+    assert len(annotation_by_text(fig, "Otra comida").text) <= 22
+
+
+# ------------------------------------------------- fuente de Firebase no disponible (M-2)
+def test_an_unavailable_firebase_source_is_announced_in_the_chart():
+    fig = figure_for([manual(10)], manual_unavailable=True)
+
+    note = annotation_by_text(fig, "Firebase:")
+    assert "fuente no disponible" in note.text
+
+
+def test_without_data_the_chart_does_not_claim_there_are_no_measurements_when_firebase_is_down():
+    down = " ".join(a.text for a in figure_for([], manual_unavailable=True).layout.annotations)
+    healthy = " ".join(a.text for a in figure_for([]).layout.annotations)
+
+    assert "Sin mediciones de glucosa" not in down and "Firebase no disponible" in down
+    assert "Sin mediciones de glucosa en estas ventanas" in healthy
+
+
+def test_a_healthy_source_adds_no_unavailable_note():
+    assert not any("no disponible" in a.text for a in figure_for([manual(10)]).layout.annotations)
+
+
+def test_the_unavailable_note_is_not_added_when_no_firebase_series_is_selected():
+    association = associate_meals(meals(("a", 0)), inputs(*sensor_run(-120, 300)), NOW)
+    fig = meal_window_figure(
+        meals(("a", 0))[0],
+        association.meals[0],
+        association,
+        tolerance_minutes=10,
+        sources=frozenset({S.SENSOR}),
+        show_scans=False,
+        target_range=(70, 180),
+        manual_unavailable=True,
+    )
+
+    assert not any("no disponible" in a.text for a in fig.layout.annotations)
+    assert LEGEND_NAMES[S.SENSOR] in traces(fig)  # el sensor sigue dibujándose igual

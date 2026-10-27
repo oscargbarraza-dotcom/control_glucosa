@@ -284,7 +284,7 @@ def test_the_detail_table_pins_date_type_and_foods_and_drops_no_column(app):
     pinned = [name for name, c in config.items() if c.get("pinned")]
     assert pinned == ["Fecha y hora", "Tipo", "Alimentos"]
     assert set(element.value.columns) <= set(config)  # cada columna conserva su ancho
-    assert all(c["width"] >= 95 for name, c in config.items() if name != "_index")
+    assert all(c["width"] >= 90 for name, c in config.items() if name != "_index")
 
 
 def test_the_sub_minute_reference_is_shown_in_seconds_never_as_zero_minutes(app):
@@ -366,3 +366,139 @@ def test_the_page_is_read_only_it_never_asks_the_sources_to_write(app):
     sources = app.session_state["fuentes"]
 
     assert sources.saved_range is None and sources.imported == []
+
+
+# ------------------------------------------------- fuente de Firebase (M-2)
+FIREBASE_COLUMNS = ["Previa (manual)", "Referencia (manual)", "+60 (manual)", "+90 (manual)"]
+SENSOR_COLUMNS = ["+60 (sensor)", "+90 (sensor)", "Sensor posterior (cobertura)"]
+
+
+def test_a_failed_measurements_read_says_so_in_cards_instead_of_showing_zeros(monkeypatch):
+    app = run(monkeypatch, "firebase_error")
+    found = cards(app)
+
+    assert not app.exception
+    assert found["Manual +60"] == "Fuente no disponible"
+    assert found["Manual +90"] == "Fuente no disponible"
+    assert "Elegibles +60" not in found and "Pendientes +60" not in found
+    assert not any(re.fullmatch(r"\d+ de \d+", v) for v in found.values())
+    assert found["Comidas"] == "6"  # las comidas cargadas siguen contadas
+
+
+def test_a_failed_measurements_read_marks_the_table_and_keeps_every_meal(monkeypatch):
+    app = run(monkeypatch, "firebase_error")
+    frame = meals_frame(app)
+
+    assert len(frame) == 6
+    for column in FIREBASE_COLUMNS:
+        assert set(frame[column]) <= {"Fuente no disponible", "Hito pendiente"}
+        assert "Fuente no disponible" in set(frame[column])
+    assert not any("mg/dL" in str(v) for column in FIREBASE_COLUMNS for v in frame[column])
+    assert "Sin medición manual registrada" not in " ".join(
+        str(v) for column in FIREBASE_COLUMNS for v in frame[column]
+    )
+
+
+def test_a_failed_read_is_never_replaced_by_the_simulated_manual_values(monkeypatch):
+    app = run(monkeypatch, "firebase_error")
+    cells = (
+        str(v) for df in app.dataframe for column in df.value.columns for v in df.value[column]
+    )
+    shown = " ".join([*cells, texts(app)])
+
+    assert not re.search(r"\b(60|120|260) mg/dL", shown)  # valores del escenario sano
+
+
+def test_the_hito_table_and_the_chart_of_the_selected_meal_also_say_unavailable(monkeypatch):
+    app = run(monkeypatch, "firebase_error")
+    milestones = next(df.value for df in app.dataframe if "Hito" in df.value.columns)
+
+    assert set(milestones["Manual (Firebase)"]) <= {"Fuente no disponible", "Hito pendiente"}
+    assert set(milestones["Tolerancia"]) == {"±10 min"}
+    notes = " ".join(a["text"] for a in window_chart(app)["layout"].get("annotations", []))
+    assert "fuente no disponible" in notes.lower()
+    assert "Sin mediciones de glucosa" not in notes
+
+
+def test_the_warning_explains_that_meals_are_shown_without_knowing_the_measurements(monkeypatch):
+    app = run(monkeypatch, "firebase_error")
+
+    warning = " ".join(w.value for w in app.warning)
+    assert "Firebase (mediciones)" in warning and "Fuente no disponible" in warning
+
+
+def test_the_coverage_table_omits_the_firebase_rows_when_the_read_failed(monkeypatch):
+    app = run(monkeypatch, "firebase_error")
+    coverage = next(df.value for df in app.dataframe if "Con previa" in df.value.columns)
+
+    assert list(coverage["Fuente"]) == ["Sensor (LibreView)"]
+
+
+def test_libreview_results_are_identical_with_firebase_up_or_down(monkeypatch):
+    healthy = meals_frame(run(monkeypatch, "full"))
+    failed = meals_frame(run(monkeypatch, "firebase_error"))
+
+    assert healthy[SENSOR_COLUMNS].equals(failed[SENSOR_COLUMNS])
+    assert healthy["Fecha y hora"].equals(failed["Fecha y hora"])
+
+
+def test_an_empty_collection_has_its_own_wording_everywhere(monkeypatch):
+    app = run(monkeypatch, "manual_empty")
+    found = cards(app)
+    frame = meals_frame(app)
+
+    assert not app.exception
+    assert found["Manual +60"] == "Sin mediciones en Firebase"
+    assert found["Manual +90"] == "Sin mediciones en Firebase"
+    for column in FIREBASE_COLUMNS:
+        assert set(frame[column]) <= {"Sin mediciones en Firebase", "Hito pendiente"}
+    assert any("colección de mediciones de Firebase está vacía" in i.value for i in app.info)
+    assert not any("Fuente no disponible" in w.value for w in app.warning)
+
+
+def test_the_three_situations_are_told_apart(monkeypatch):
+    healthy = meals_frame(run(monkeypatch, "full"))
+    empty = meals_frame(run(monkeypatch, "manual_empty"))
+    failed = meals_frame(run(monkeypatch, "firebase_error"))
+
+    assert "Sin medición manual registrada" in set(healthy["+60 (manual)"])  # ausencia en ventana
+    assert set(empty["+60 (manual)"]) == {"Sin mediciones en Firebase"}
+    assert set(failed["+60 (manual)"]) == {"Fuente no disponible"}
+
+
+def test_after_a_failed_read_the_source_recovers_when_firebase_comes_back(monkeypatch):
+    app = run(monkeypatch, "firebase_flaky")
+    sources = app.session_state["fuentes"]
+    assert cards(app)["Manual +60"] == "Fuente no disponible"
+    assert sources.manual_calls == 1
+
+    app.sidebar.button(key="alimentacion_actualizar").click().run()
+
+    found = cards(app)
+    assert sources.manual_calls == 2 and not app.exception
+    assert re.fullmatch(r"\d+ de 6", found["Manual +60"])
+    assert found["Elegibles +60"] == "6" and found["Pendientes +60"] == "0"
+    frame = meals_frame(app)
+    assert not any("Fuente no disponible" in str(v) for v in frame["+60 (manual)"])
+    assert any("mg/dL" in str(v) for v in frame["+60 (manual)"])
+    assert not any("Fuente no disponible" in w.value for w in app.warning)
+    assert app.header[0].value == "Alimentación"
+
+
+def test_filters_keep_working_while_the_source_is_down(monkeypatch):
+    app = run(monkeypatch, "firebase_error")
+
+    app.multiselect(key="alimentacion_tipos").set_value(["Desayuno"]).run()
+    assert not app.exception and cards(app)["Comidas"] == "2"
+
+    app.selectbox(key="alimentacion_disponibilidad").set_value("Con glucosa previa").run()
+    assert not app.exception and cards(app)["Comidas"] == "2"  # los indicadores no cambian
+
+
+def test_the_pinned_columns_fit_the_budget_that_keeps_them_pinned_at_760_px(app):
+    element = next(e for e in app.dataframe if "Fecha y hora" in e.value.columns)
+    config = json.loads(element.proto.columns)
+
+    pinned = {name: c["width"] for name, c in config.items() if c.get("pinned")}
+    assert list(pinned) == ["Fecha y hora", "Tipo", "Alimentos"]
+    assert sum(pinned.values()) <= 393  # 55 % de los ~715 px de la tabla a 760 px

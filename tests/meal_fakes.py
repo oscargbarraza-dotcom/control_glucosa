@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from glucosa.models.records import MealRecord, MealType
-from glucosa.ui.glucose_sources import MealLoad, SourceStatus
+from glucosa.ui.glucose_sources import ManualLoad, MealLoad, SourceStatus
 from tests.glucose_fakes import FETCHED_AT, NOW, START, FakeSources
 from tests.meal_helpers import meal
 
@@ -30,6 +30,7 @@ class FakeMealSources(FakeSources):
     def __init__(self, scenario: str = "full") -> None:
         super().__init__(scenario)
         self.meal_calls = 0
+        self._manual_failures = 1 if scenario == "firebase_flaky" else 0
 
     def load_meals(self) -> MealLoad:
         self.meal_calls += 1
@@ -48,3 +49,14 @@ class FakeMealSources(FakeSources):
             rejected=1 if self.scenario == "meals_rejected" else 0,
             fetched_at=FETCHED_AT,
         )
+
+    def load_manual(self) -> ManualLoad:
+        """``firebase_flaky``: la primera lectura falla y las siguientes funcionan (recuperación)."""
+        if self._manual_failures:
+            self._manual_failures -= 1
+            self.manual_calls += 1
+            return ManualLoad(SourceStatus.ERROR, message="Sin conexión con Firebase.")
+        if self.scenario == "manual_empty":  # la lectura funciona y la colección está vacía
+            self.manual_calls += 1
+            return ManualLoad(SourceStatus.OK, records=(), fetched_at=FETCHED_AT)
+        return super().load_manual()

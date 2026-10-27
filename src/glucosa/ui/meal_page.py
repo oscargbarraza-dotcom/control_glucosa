@@ -71,6 +71,7 @@ from glucosa.ui.meal_charts import (
 )
 from glucosa.ui.meal_filters_ui import MealFilterState, render_meal_filters
 from glucosa.ui.meal_kpi import milestone_groups, milestone_groups_html
+from glucosa.ui.meal_labels import FirebaseState, firebase_state
 from glucosa.ui.meal_table import (
     PINNED_COLUMNS,
     availability_table,
@@ -179,7 +180,9 @@ def _status_line(
     return "  │  ".join(parts)
 
 
-def _messages(meals: MealLoad, manual: ManualLoad, libre: LibreLoad) -> None:
+def _messages(
+    meals: MealLoad, manual: ManualLoad, libre: LibreLoad, firebase: FirebaseState
+) -> None:
     if meals.status is not SourceStatus.OK:
         icon = "🔒" if meals.status in _SESSION_STATES else "⚠️"
         st.warning(f"Firebase (comidas): {meals.message}", icon=icon)
@@ -190,8 +193,15 @@ def _messages(meals: MealLoad, manual: ManualLoad, libre: LibreLoad) -> None:
             )
         if meals.warnings:
             st.caption(f"{meals.warnings} comida(s) con avisos de validación (se conservan).")
-    if manual.status not in (SourceStatus.OK, *_SESSION_STATES):
-        st.warning(f"Firebase (mediciones): {manual.message}", icon="⚠️")
+    if firebase is FirebaseState.UNAVAILABLE:
+        detail = manual.message or "no se pudo leer."
+        st.warning(
+            f"Firebase (mediciones): {detail} Fuente no disponible: las comidas se muestran, pero "
+            "no se sabe si hay mediciones manuales ni importadas.",
+            icon="⚠️",
+        )
+    elif firebase is FirebaseState.EMPTY:
+        st.info("La colección de mediciones de Firebase está vacía: aún no hay mediciones.")
     if libre.status is SourceStatus.ERROR:
         st.error(f"LibreView: {libre.message}")
 
@@ -217,6 +227,7 @@ def _kpis(
     in_population: MealAssociation,
     filters: MealFilterState,
     has_imported: bool,
+    firebase: FirebaseState,
 ) -> None:
     summary = summarize_meals(population, filters.period)
     primary = next(i for i in per_day_indicators(summary) if i.primary)
@@ -242,7 +253,7 @@ def _kpis(
         for source in (ReadingSource.MANUAL, ReadingSource.IMPORTED)
         if source in filters.sources and (source is ReadingSource.MANUAL or has_imported)
     }
-    groups = milestone_groups(by_source)
+    groups = milestone_groups(by_source, firebase)
     if groups:
         st.html(milestone_groups_html(groups, Tone.FIREBASE))
         st.caption(
@@ -317,6 +328,7 @@ def _meal_detail(
     filters: MealFilterState,
     has_imported: bool,
     target_range: tuple[int, int],
+    firebase: FirebaseState,
 ) -> None:
     st.subheader("Comida individual · glucosa de −60 a +180 min")
     if not visible:
@@ -342,6 +354,7 @@ def _meal_detail(
             sources=filters.sources,
             show_scans=filters.show_scans,
             target_range=target_range,
+            manual_unavailable=firebase is FirebaseState.UNAVAILABLE,
         ),
         width="stretch",
         key="alimentacion_comida_fig",
@@ -353,7 +366,7 @@ def _meal_detail(
         "tolerancia de los hitos +60 y +90. No se interpola ningún valor. " + DISCLAIMER
     )
     st.dataframe(
-        milestones_table(outcome, filters.sources, has_imported=has_imported),
+        milestones_table(outcome, filters.sources, has_imported=has_imported, firebase=firebase),
         hide_index=True,
         width="stretch",
     )
@@ -361,7 +374,12 @@ def _meal_detail(
         frame = nearby_readings_table(
             outcome, association, filters.sources, show_scans=filters.show_scans
         )
-        if frame.empty:
+        if frame.empty and firebase is FirebaseState.UNAVAILABLE:
+            st.write(
+                "Sin lecturas del sensor en sus ventanas. Mediciones de Firebase: fuente no "
+                "disponible."
+            )
+        elif frame.empty:
             st.write("Esta comida no tiene mediciones en sus ventanas (−60 a +180 min).")
         else:
             st.dataframe(
@@ -381,9 +399,12 @@ def _detail_table(
     views: dict[str, MealView],
     filters: MealFilterState,
     has_imported: bool,
+    firebase: FirebaseState,
 ) -> None:
     st.subheader("Detalle de comidas y mediciones cercanas")
-    frame = meals_table(visible, views, filters.sources, has_imported=has_imported)
+    frame = meals_table(
+        visible, views, filters.sources, has_imported=has_imported, firebase=firebase
+    )
     st.markdown(f"**Comidas mostradas: {len(visible)} de {total}** · hora local de Chile")
     if frame.empty:
         st.info("No hay comidas con los filtros de visualización elegidos.")
@@ -415,11 +436,12 @@ def render_meal_page(
     meals = _load_meals(sources, refresh)
     manual = _load_manual(sources, force=refresh)
     libre = _load_libre(sources)
+    firebase = firebase_state(manual.status, len(manual.records))
 
     st.header("Alimentación")
     if meals.status is not SourceStatus.OK or not meals.records:
         st.markdown(_status_line(None, meals, manual, libre.load))
-        _messages(meals, manual, libre.load)
+        _messages(meals, manual, libre.load, firebase)
         if meals.status is SourceStatus.OK:
             st.info("Aún no hay comidas sincronizadas desde la aplicación Android.")
         return
@@ -430,7 +452,7 @@ def render_meal_page(
     food_names = {rank.normalized: rank.display_name for rank in food_ranking(views)}
     filters = render_meal_filters(food_names, has_imported, now)
     st.markdown(_status_line(filters, meals, manual, libre.load))
-    _messages(meals, manual, libre.load)
+    _messages(meals, manual, libre.load, firebase)
     if filters is None:
         return
 
@@ -454,7 +476,7 @@ def render_meal_page(
     population = filter_meals(views, filters.period, filters.types, filters.foods)
     in_population = select_association(association, {m.uuid for m in population})
 
-    _kpis(population, in_population, filters, has_imported)
+    _kpis(population, in_population, filters, has_imported, firebase)
     _export_message(in_population, filters)
     if not population:
         st.info("No hay comidas con los filtros elegidos.")
@@ -464,12 +486,17 @@ def render_meal_page(
         in_population.meals, filters.availability, filters.isolated_only, filters.sources
     )
     target_range = sources.target_range()
-    _meal_detail(visible, association, by_uuid, filters, has_imported, target_range)
-    _detail_table(visible, len(in_population.meals), by_uuid, filters, has_imported)
+    _meal_detail(visible, association, by_uuid, filters, has_imported, target_range, firebase)
+    _detail_table(visible, len(in_population.meals), by_uuid, filters, has_imported, firebase)
     with st.expander("Cobertura de glucosa por fuente"):
-        st.dataframe(availability_table(in_population), hide_index=True, width="stretch")
+        st.dataframe(availability_table(in_population, firebase), hide_index=True, width="stretch")
+        note = (
+            " Las filas de Firebase se omiten: fuente no disponible."
+            if firebase is FirebaseState.UNAVAILABLE
+            else ""
+        )
         st.caption(
             "Comidas con mediciones en la ventana previa (−60 a −5 min) y posterior "
             "(+5 a +180 min) por fuente. «Estadísticos permitidos» del sensor exige "
-            "cobertura ≥ 70 %."
+            "cobertura ≥ 70 %." + note
         )

@@ -25,7 +25,7 @@ from glucosa.analytics.meal_summaries import DayCount, FoodRank, HourBin, TypeCo
 from glucosa.analytics.meal_view import MealView
 from glucosa.data.timeutil import to_santiago
 from glucosa.ui.glucose_charts import BAND_COLORS, COLOR_MANUAL, COLOR_SCAN, COLOR_SENSOR
-from glucosa.ui.meal_labels import LEGEND_NAMES, signed_minutes
+from glucosa.ui.meal_labels import FIREBASE_SOURCES, LEGEND_NAMES, signed_minutes
 
 GAP_MINUTES = 30
 GRID = "rgba(150,160,175,0.15)"
@@ -338,8 +338,13 @@ def meal_window_figure(
     sources: Collection[ReadingSource],
     show_scans: bool,
     target_range: tuple[int, int],
+    manual_unavailable: bool = False,
 ) -> go.Figure:
-    """Glucosa de −60 a +180 min alrededor del registro, con marcas en 0, +60 y +90."""
+    """Glucosa de −60 a +180 min alrededor del registro, con marcas en 0, +60 y +90.
+
+    Con ``manual_unavailable`` (la lectura de Firebase falló) el gráfico lo dice y no afirma que no
+    haya mediciones.
+    """
     fig = go.Figure()
     fig.add_hrect(
         y0=target_range[0],
@@ -400,12 +405,29 @@ def meal_window_figure(
         if trace is not None:
             fig.add_trace(trace)
     _annotate_neighbors(fig, outcome)
+    firebase_down = manual_unavailable and bool(FIREBASE_SOURCES & set(sources))
+    if firebase_down:  # abajo a la derecha: lejos de las etiquetas +60/+90 y de la línea de 0
+        fig.add_annotation(
+            x=0.99,
+            xref="paper",
+            xanchor="right",
+            y=0.03,
+            yref="paper",
+            yanchor="bottom",
+            text="Firebase: fuente no disponible",
+            showarrow=False,
+            font={"size": 11, "color": "#F0A830"},
+        )
     if not any(trace is not None and trace.name in LEGEND_NAMES.values() for trace in traces):
         fig.add_annotation(
             x=60,
             y=0.5,
             yref="paper",
-            text="Sin mediciones de glucosa en estas ventanas",
+            text=(
+                "Sin lecturas disponibles: Firebase no disponible"
+                if firebase_down
+                else "Sin mediciones de glucosa en estas ventanas"
+            ),
             showarrow=False,
             font={"size": 14, "color": "#9AA4B2"},
         )
@@ -440,11 +462,16 @@ def _annotate_neighbors(fig: go.Figure, outcome: MealGlucose) -> None:
                 yref="paper",
                 line={"color": "#9AA4B2", "dash": "dot", "width": 1},
             )
+            offset = signed_minutes(neighbor.minutes, 0)
+            # Texto corto y anclado bajo las etiquetas de ventana (arriba): no se cruzan. El tipo
+            # de la otra comida queda en el texto emergente.
             fig.add_annotation(
                 x=neighbor.minutes,
-                y=0.93,
+                y=0.96,
                 yref="paper",
-                text=f"Otra comida ({neighbor.type_label}) {signed_minutes(neighbor.minutes, 0)}",
+                yanchor="top",
+                text=f"Otra comida {offset}",
+                hovertext=f"Otra comida ({neighbor.type_label}) {offset}",
                 showarrow=False,
                 font={"size": 11, "color": "#9AA4B2"},
                 textangle=-90,

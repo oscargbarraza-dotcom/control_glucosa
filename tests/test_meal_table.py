@@ -6,6 +6,7 @@ from glucosa.analytics.meal_glucose import AssociationParams, associate_meals
 from glucosa.analytics.meal_milestones import MilestoneParams
 from glucosa.analytics.meal_readings import ReadingSource as S
 from glucosa.ui.meal_table import (
+    PINNED_BUDGET_PX,
     PINNED_COLUMNS,
     availability_table,
     column_width,
@@ -293,8 +294,10 @@ def test_the_three_leading_columns_are_pinned_and_every_column_gets_a_readable_w
     assert PINNED_COLUMNS == ("Fecha y hora", "Tipo", "Alimentos")
     assert list(frame.columns[:3]) == list(PINNED_COLUMNS)
     widths = {name: column_width(name) for name in frame.columns}
-    assert min(widths.values()) >= 95
-    assert sum(widths[name] for name in PINNED_COLUMNS) <= 450  # deja sitio para desplazar
+    assert min(widths.values()) >= 90
+    assert (
+        sum(widths[name] for name in PINNED_COLUMNS) <= PINNED_BUDGET_PX
+    )  # bajo el ~60 % de Streamlit
     assert widths["Referencia (manual)"] >= 300 and widths["+60 (sensor)"] >= 340
 
 

@@ -21,22 +21,29 @@ from glucosa.analytics.meal_readings import ReadingSource, WindowReading
 from glucosa.analytics.meal_view import MealView
 from glucosa.data.timeutil import to_santiago
 from glucosa.ui.meal_labels import (
+    EMPTY_TEXT,
+    FIREBASE_SOURCES,
     SOURCE_NAMES,
+    UNAVAILABLE_TEXT,
     WINDOW_LABELS,
+    FirebaseState,
     milestone_text,
     signed_minutes,
 )
 
 NONE_TEXT = "—"
-# Tabla de detalle: las tres primeras columnas quedan fijas y el resto conserva un ancho legible
-# (si no caben, la tabla se desplaza en horizontal; no se quita ninguna columna).
+# Tabla de detalle: fecha, tipo y alimentos quedan fijos y el resto conserva un ancho legible
+# (si no caben, la tabla se desplaza en horizontal; no se quita ninguna columna). Streamlit
+# desancla TODAS las columnas fijas si suman más del ~60 % del ancho de la tabla (≈ 715 px a
+# 760 px de ventana); por eso el conjunto fijo se mantiene bajo el ~55 % de ese ancho.
 PINNED_COLUMNS = ("Fecha y hora", "Tipo", "Alimentos")
+PINNED_BUDGET_PX = 393  # 55 % de los ~715 px de la tabla a 760 px de ventana
 _DEFAULT_WIDTH = 200
 _FIXED_WIDTHS = {
-    "Fecha y hora": 135,
-    "Tipo": 95,
-    "Alimentos": 200,
-    "Datos de glucosa": 210,
+    "Fecha y hora": 120,
+    "Tipo": 108,
+    "Alimentos": 160,
+    "Datos de glucosa": 250,
     "Sensor posterior (cobertura)": 330,
     "Ventanas": 420,
 }
@@ -49,6 +56,16 @@ _SHORT = {
     ReadingSource.IMPORTED: "importada",
     ReadingSource.SENSOR: "sensor",
 }
+
+
+def _state_text(source: ReadingSource, firebase: FirebaseState) -> str | None:
+    """Texto que reemplaza a cualquier valor de Firebase cuando la fuente no permite afirmarlo."""
+    if source in FIREBASE_SOURCES:
+        if firebase is FirebaseState.UNAVAILABLE:
+            return UNAVAILABLE_TEXT
+        if firebase is FirebaseState.EMPTY:
+            return EMPTY_TEXT
+    return None
 
 
 def _reading_text(item: WindowReading | None) -> str:
@@ -85,7 +102,16 @@ def sharing_text(outcome: MealGlucose) -> str:
     return " · ".join(notes) if notes else "Aislada"
 
 
-def _availability_text(outcome: MealGlucose, sources: Collection[ReadingSource]) -> str:
+def _availability_text(
+    outcome: MealGlucose,
+    selected: Collection[ReadingSource],
+    firebase: FirebaseState = FirebaseState.AVAILABLE,
+) -> str:
+    """Disponibilidad de glucosa; sin Firebase nunca se afirma «sin mediciones» ni se cuenta 0."""
+    sources = [
+        s for s in selected if not (s in FIREBASE_SOURCES and firebase is FirebaseState.UNAVAILABLE)
+    ]
+    down = len(sources) < len(selected)
     present = [
         w for w in (Window.PRE, Window.POST) if any(outcome.summary(w, s).n for s in sources)
     ]
@@ -93,14 +119,18 @@ def _availability_text(outcome: MealGlucose, sources: Collection[ReadingSource])
         outcome.any_readings[w] and any(outcome.summary(w, s).n for s in sources)
         for w in WINDOW_ORDER
     ):
-        return "Sin mediciones cercanas de las fuentes elegidas"
+        return UNAVAILABLE_TEXT if down else "Sin mediciones cercanas de las fuentes elegidas"
     labels = {Window.PRE: "previa", Window.POST: "posterior"}
     have = [labels[w] for w in present] or ["solo al comer"]
-    return "Con " + " y ".join(have)
+    return "Con " + " y ".join(have) + (" · sin Firebase" if down else "")
 
 
 def milestones_table(
-    outcome: MealGlucose, sources: Collection[ReadingSource], *, has_imported: bool
+    outcome: MealGlucose,
+    sources: Collection[ReadingSource],
+    *,
+    has_imported: bool,
+    firebase: FirebaseState = FirebaseState.AVAILABLE,
 ) -> pd.DataFrame:
     """Los hitos +60 y +90 de una comida: una columna por fuente, con la tolerancia usada."""
     rows = []
@@ -108,7 +138,7 @@ def milestones_table(
         row: dict[str, object] = {"Hito": f"+{minutes} min"}
         for source in SERIES:
             if source in sources and (source is not ReadingSource.IMPORTED or has_imported):
-                row[SOURCE_NAMES[source]] = milestone_text(by_source[source])
+                row[SOURCE_NAMES[source]] = milestone_text(by_source[source], firebase)
         tolerance = next(iter(by_source.values())).tolerance_minutes
         row["Tolerancia"] = f"±{tolerance} min"
         rows.append(row)
@@ -133,6 +163,7 @@ def meals_table(
     sources: Collection[ReadingSource],
     *,
     has_imported: bool,
+    firebase: FirebaseState = FirebaseState.AVAILABLE,
 ) -> pd.DataFrame:
     """Una fila por comida, de la más reciente a la más antigua."""
     rows = []
@@ -142,17 +173,18 @@ def meals_table(
             "Fecha y hora": to_santiago(meal.eaten_at).replace(tzinfo=None),
             "Tipo": meal.type_label,
             "Alimentos": ", ".join(" ".join(i.name.split()) for i in meal.items) or NONE_TEXT,
-            "Datos de glucosa": _availability_text(outcome, sources),
+            "Datos de glucosa": _availability_text(outcome, sources, firebase),
         }
         for source in SERIES:
             if source not in sources or (source is ReadingSource.IMPORTED and not has_imported):
                 continue
             name = _SHORT[source]
             if source is not ReadingSource.SENSOR:
-                row[f"Previa ({name})"] = _reading_text(outcome.previous.get(source))
-                row[f"Referencia ({name})"] = _reference_text(outcome, source)
-            row[f"+60 ({name})"] = milestone_text(outcome.milestones[60][source])
-            row[f"+90 ({name})"] = milestone_text(outcome.milestones[90][source])
+                masked = _state_text(source, firebase)
+                row[f"Previa ({name})"] = masked or _reading_text(outcome.previous.get(source))
+                row[f"Referencia ({name})"] = masked or _reference_text(outcome, source)
+            row[f"+60 ({name})"] = milestone_text(outcome.milestones[60][source], firebase)
+            row[f"+90 ({name})"] = milestone_text(outcome.milestones[90][source], firebase)
             if source is ReadingSource.SENSOR:
                 row["Sensor posterior (cobertura)"] = availability_label(
                     outcome.summary(Window.POST, ReadingSource.SENSOR)
@@ -226,12 +258,16 @@ def nearby_readings_table(
     return frame.sort_values(["Hora local", "Fuente"], kind="stable").reset_index(drop=True)
 
 
-def availability_table(association: MealAssociation) -> pd.DataFrame:
-    """Cobertura de glucosa por fuente sobre las comidas indicadas (comidas con lecturas)."""
+def availability_table(
+    association: MealAssociation, firebase: FirebaseState = FirebaseState.AVAILABLE
+) -> pd.DataFrame:
+    """Cobertura de glucosa por fuente; sin Firebase se omiten sus filas (no se muestran ceros)."""
     from glucosa.analytics.meal_glucose import coverage_counts
 
     rows = []
     for source, counts in coverage_counts(association).items():
+        if source in FIREBASE_SOURCES and firebase is FirebaseState.UNAVAILABLE:
+            continue
         rows.append(
             {
                 "Fuente": SOURCE_NAMES[source],
