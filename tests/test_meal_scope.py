@@ -1,6 +1,7 @@
-"""Guardas de alcance de la Etapa D2: solo datos e indicadores de comidas.
+"""Guardas de alcance de Alimentación (D2 a D4).
 
-Todavía no hay asociación con glucosa, hitos posprandiales, gráficos ni interfaz de Alimentación.
+Las capas de datos y de indicadores de comidas (D2) no dependen de glucosa, LibreView, gráficos
+ni interfaz; la asociación con glucosa (D3) y la interfaz (D4) viven en módulos propios.
 """
 
 import ast
@@ -44,23 +45,33 @@ def test_meal_analytics_do_not_depend_on_glucose_series_libreview_charts_or_the_
             assert not module.startswith(FORBIDDEN_PREFIXES), f"{path.name} importa {module}"
 
 
-def test_there_is_no_meal_page_chart_or_table_yet():
-    # D3 solo agrega la capa analítica (analytics/meal_glucose, meal_readings y meal_milestones).
-    ui = SRC / "ui"
-    assert not list(ui.glob("meal_*.py"))
+def test_only_the_d3_analytics_and_the_d4_dashboard_logic_exist():
+    # D4 agrega solo la lógica de visualización (meal_dashboard) y la interfaz; nada de D5.
     assert {p.name for p in (SRC / "analytics").glob("meal_*.py")} == {
         "meal_view.py",
         "meal_summaries.py",
         "meal_readings.py",
         "meal_glucose.py",
         "meal_milestones.py",
+        "meal_dashboard.py",
     }
 
 
-def test_the_navigation_still_marks_alimentacion_as_a_placeholder():
+def test_the_d4_interface_is_limited_to_the_page_filters_labels_cards_charts_and_tables():
+    assert {p.name for p in (SRC / "ui").glob("meal_*.py")} == {
+        "meal_page.py",
+        "meal_filters_ui.py",
+        "meal_kpi.py",
+        "meal_labels.py",
+        "meal_charts.py",
+        "meal_table.py",
+    }
+
+
+def test_the_navigation_marks_alimentacion_as_available():
     from glucosa.ui.navigation import PLANNED_PHASE
 
-    assert "Alimentación" in PLANNED_PHASE
+    assert "disponible" in PLANNED_PHASE["Alimentación"]
 
 
 def test_meal_summaries_expose_no_glucose_fields():

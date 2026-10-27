@@ -14,12 +14,13 @@ Android *SeguimientoGlucosa* sincroniza en Firebase Firestore: glucosa, comidas,
 - **Fase 4 (Glucosa): COMPLETADA (2026-10-27).** Importador de LibreView, base local cifrada, cobertura y TIR
   estimado, y dashboard de Glucosa (filtros, indicadores por fuente, procedencia de las mediciones de Firebase,
   gráfico, distribuciones y tabla), con acceso local protegido y diseño compacto en tema oscuro.
-- **Fase D (Alimentación):** etapa D2 (datos e indicadores de comidas: normalización de alimentos, conteos por tipo,
-  día, horario y alimento, promedios por día, carga de solo lectura) implementada y a la espera de revisión; todavía sin
-  interfaz, sin asociación con glucosa ni hitos posprandiales (D3 y D4).
-- **D2 cerrada y D3 (capa analítica) implementada (2026-10-27):** asociación de cada comida con la glucosa de sus ventanas
-  (previa, al comer y posterior), glucosa de referencia y previa, hitos +60/+90 min con tolerancia configurable,
-  coincidencias probables manual ↔ LibreView y disponibilidad del sensor. Aún sin interfaz ni gráficos (D4). Alimentación, Medicamentos, Biometría y
+- **Fase D (Alimentación): D2 y D3 cerradas; D4 (interfaz) implementada (2026-10-27)** y a la espera de revisión.
+  Datos e indicadores de comidas (D2), asociación de cada comida con la glucosa de sus ventanas, referencia y previa,
+  hitos +60/+90 min con tolerancia configurable y coincidencias probables manual ↔ LibreView (D3), y la página
+  **Alimentación** (D4): filtros de período, tipo, alimento y fuente, filtros de visualización (disponibilidad y comidas
+  aisladas), indicadores de comidas y de mediciones manuales cercanas a +60/+90 (elegibles y pendientes por separado),
+  distribuciones, selector de comida individual con su gráfico de −60 a +180 min y tablas detalladas. Es descriptivo:
+  no calcula cumplimiento de recordatorios ni atribuye efectos de alimentos sobre la glucosa. Medicamentos, Biometría y
   Configuración son por ahora marcadores. Pendientes para fases posteriores: optimización de gráficos grandes (M-4),
   empaquetado Windows y otros ajustes técnicos. El detalle de decisiones y avance está en
   [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).

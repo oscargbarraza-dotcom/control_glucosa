@@ -12,7 +12,7 @@ PAGES: tuple[str, ...] = (
 PLANNED_PHASE: dict[str, str] = {
     "Dashboard general": "Fase 4–6",
     "Glucosa": "Fase 4 · Etapa C (disponible)",
-    "Alimentación": "Fase 5",
+    "Alimentación": "Etapa D4 (disponible)",
     "Medicamentos": "Fase 5",
     "Biometría": "Fase 5",
     "Configuración": "Fase 3",
