@@ -1,0 +1,29 @@
+[server]
+# Solo accesible desde este equipo: la app maneja datos de salud.
+address = "127.0.0.1"
+# Protección contra páginas web externas que intenten hablarle a la app local
+# (WebSocket entre orígenes / DNS rebinding): CORS activo y hosts permitidos.
+enableCORS = true
+enableXsrfProtection = true
+corsAllowedOrigins = []
+allowedHosts = ["127.0.0.1", "localhost"]
+# Tope de subida en MB (un export de LibreView pesa pocos MB; el importador admite 25 MB).
+maxUploadSize = 30
+
+[client]
+# Sin trazas ni rutas en el navegador y sin botones de descarga/copia de tablas (los datos de
+# salud no deben salir hacia Descargas, que puede sincronizarse con OneDrive).
+showErrorDetails = "none"
+disableDataExport = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+# Tema oscuro fijo y controles en gris neutro: el rojo queda reservado a «bajo el rango».
+base = "dark"
+primaryColor = "#6B7A8F"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#161B22"
+textColor = "#E6EAF0"
+font = "sans serif"

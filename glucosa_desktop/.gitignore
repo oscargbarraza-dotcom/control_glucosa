@@ -1,0 +1,121 @@
+# =====================================================================================
+# .gitignore ESTRICTO de _glucosa (lista blanca)
+#
+# Estrategia: se ignora TODO y solo se permite lo que se ha revisado. Un archivo nuevo o
+# desconocido NUNCA se versiona por accidente: hay que agregarlo aquí a propósito.
+# Este proyecto maneja datos de salud: las credenciales, los CSV, las bases cifradas y
+# cualquier copia de datos no deben entrar jamás al historial.
+# =====================================================================================
+
+# 1) Ignorar todo (archivos y carpetas) y volver a permitir las carpetas para poder
+#    permitir archivos concretos dentro de ellas.
+*
+!*/
+
+# 2) Lista blanca: código, pruebas y configuración sin secretos.
+!.gitignore
+!.env.example
+!README.md
+!pyproject.toml
+!requirements.txt
+!requirements-dev.txt
+!.streamlit/config.toml
+!src/**/*.py
+!tests/**/*.py
+
+# 3) Documentos del proyecto: PENDIENTES DE DECISIÓN (contienen estadísticas agregadas
+#    derivadas de datos de salud reales). Para versionarlos, quitar el «#» de la línea.
+# !PROJECT_CONTEXT.md
+# !PROMPT_ORIGINAL.md
+
+# 4) Refuerzo explícito (redundante con «*», pero deja la intención por escrito y protege
+#    si alguien agrega una regla «!» demasiado amplia).
+# Secretos, credenciales y configuración local
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+/secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+client_secret*.json
+oauth_client*.json
+service-account*.json
+google-services.json
+GoogleService-Info.plist
+*token*.json
+*token*.txt
+*credential*.json
+*credential*.txt
+*password*.txt
+
+# Datos de salud, exportaciones y bases locales
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.json
+*.parquet
+*.db
+*.sqlite
+*.sqlite3
+*.enc
+*.lock
+# Carpetas ancladas a la RAÍZ del proyecto: «src/glucosa/data/» es código y debe versionarse.
+/cache/
+/data/
+/data_local/
+/exports/
+/datos/
+
+# Copias de seguridad y archivos comprimidos
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
+*.swp
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+
+# Entornos virtuales, cachés y artefactos
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+build/
+dist/
+*.exe
+*.msi
+*.spec
+
+# Registros, capturas y documentos exportados
+*.log
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Editor y sistema
+.idea/
+.vscode/
+Thumbs.db
+desktop.ini
+.DS_Store
