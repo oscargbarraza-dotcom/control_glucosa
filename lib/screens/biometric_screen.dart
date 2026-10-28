@@ -4,25 +4,34 @@ import 'package:intl/intl.dart';
 import '../models/biometric_measurement.dart';
 import '../models/user_profile.dart';
 import '../services/biometric_repository.dart';
+import '../services/glucose_import_repository.dart';
+import '../services/glucose_repository.dart';
 import '../services/user_profile_repository.dart';
+import 'glucose_measurement_prompt.dart';
 
 /// Pantalla del módulo de Biometría, con tres pestañas: **Registrar**
 /// (nueva medición), **Perfil** (altura y otros datos personales) e
 /// **Historial** (mediciones ya guardadas).
 ///
-/// El peso corporal es obligatorio en cada registro; la presión arterial
-/// y la frecuencia cardíaca son opcionales. El IMC se calcula y muestra
-/// en el Historial combinando cada peso registrado con la altura del
-/// perfil (ver [UserProfile.bmiFor]); si el perfil todavía no tiene
-/// altura guardada, el IMC simplemente no se muestra. Sigue el mismo
-/// patrón que `MedicationScreen`: autocontenida, con pestañas propias en
-/// lugar de depender de `HistoryScreen`, para mantener cada módulo de
-/// dominio aislado y testeable.
+/// El peso corporal se puede omitir en un nuevo registro: si se deja en
+/// blanco, se reutiliza el peso de la última medición guardada (útil,
+/// por ejemplo, cuando solo se quiere registrar presión arterial ese
+/// día). Si todavía no hay ninguna medición previa con peso, se exige
+/// ingresarlo. La presión arterial y la frecuencia cardíaca siempre son
+/// opcionales. El IMC se calcula y muestra en el Historial combinando
+/// cada peso registrado con la altura del perfil (ver
+/// [UserProfile.bmiFor]); si el perfil todavía no tiene altura
+/// guardada, el IMC simplemente no se muestra. Sigue el mismo patrón
+/// que `MedicationScreen`: autocontenida, con pestañas propias en lugar
+/// de depender de `HistoryScreen`, para mantener cada módulo de dominio
+/// aislado y testeable.
 class BiometricScreen extends StatefulWidget {
   const BiometricScreen({
     super.key,
     required this.repository,
     required this.profileRepository,
+    this.glucoseRepository,
+    this.glucoseImportRepository,
   });
 
   /// Repositorio desde el que se cargan y guardan las mediciones.
@@ -30,6 +39,19 @@ class BiometricScreen extends StatefulWidget {
 
   /// Repositorio desde el que se carga y guarda el perfil de usuario.
   final UserProfileRepository profileRepository;
+
+  /// Repositorio de mediciones de glucosa. Si no es `null`, tras
+  /// guardar una medición se ofrece registrar de inmediato una medición
+  /// de glucosa (mismo patrón que `MealScreen`/`MedicationScreen`). Si
+  /// es `null`, no se ofrece esta opción (por ejemplo, en tests que no
+  /// necesitan probar esta funcionalidad).
+  final GlucoseRepository? glucoseRepository;
+
+  /// Repositorio de importación manual desde sensores/CGM, reenviado a
+  /// `GlucoseScreen` cuando el usuario elige registrar una medición
+  /// justo después de guardar la medición biométrica. Si es `null`,
+  /// esa pantalla no muestra el botón "Tomar desde sensor".
+  final GlucoseImportRepository? glucoseImportRepository;
 
   @override
   State<BiometricScreen> createState() => _BiometricScreenState();
@@ -84,6 +106,34 @@ class _BiometricScreenState extends State<BiometricScreen>
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Medición guardada.')));
+
+    await _offerGlucoseMeasurement();
+  }
+
+  /// Tras guardar una medición biométrica, pregunta si se quiere
+  /// registrar de inmediato una medición de glucosa (mismo patrón que
+  /// `MealScreen`/`MedicationScreen`): el peso y la presión arterial
+  /// suelen tomarse junto con la glucosa en los controles de rutina.
+  ///
+  /// No hace nada si no se proveyó [BiometricScreen.glucoseRepository]
+  /// (por ejemplo, en tests que no necesitan probar esta
+  /// funcionalidad).
+  Future<void> _offerGlucoseMeasurement() async {
+    final glucoseRepository = widget.glucoseRepository;
+    if (glucoseRepository == null || !mounted) {
+      return;
+    }
+
+    final measurement = await offerGlucoseMeasurement(
+      context: context,
+      associationDescription: 'asociada a esta medición',
+      importRepository: widget.glucoseImportRepository,
+    );
+    if (measurement == null) {
+      return;
+    }
+
+    await glucoseRepository.addMeasurement(measurement);
   }
 
   Future<void> _handleProfileSaved(UserProfile profile) async {
@@ -119,7 +169,10 @@ class _BiometricScreenState extends State<BiometricScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _BiometricForm(onSave: _handleMeasurementSaved),
+          _BiometricForm(
+            repository: widget.repository,
+            onSave: _handleMeasurementSaved,
+          ),
           _ProfileSection(
             profileFuture: _profileFuture,
             onSave: _handleProfileSaved,
@@ -132,10 +185,16 @@ class _BiometricScreenState extends State<BiometricScreen>
 }
 
 /// Formulario de registro de una nueva medición: peso corporal
-/// (obligatorio), presión arterial y frecuencia cardíaca (opcionales), y
-/// comentario (opcional).
+/// (opcional si ya hay un peso previo registrado, ver
+/// `_BiometricFormState._lastWeightKg`), presión arterial y frecuencia
+/// cardíaca (siempre opcionales), y comentario (opcional).
 class _BiometricForm extends StatefulWidget {
-  const _BiometricForm({required this.onSave});
+  const _BiometricForm({required this.repository, required this.onSave});
+
+  /// Repositorio desde el que se consulta el peso de la última
+  /// medición guardada, para ofrecerlo como valor heredado cuando el
+  /// campo de peso se deja en blanco.
+  final BiometricRepository repository;
 
   /// Invocado con la [BiometricMeasurement] construida al pulsar
   /// "Guardar".
@@ -155,6 +214,30 @@ class _BiometricFormState extends State<_BiometricForm> {
 
   bool _isSaving = false;
 
+  /// Peso (en kg) de la medición previa más reciente, o `null` si
+  /// todavía no hay ninguna medición con peso registrada. Se usa tanto
+  /// para mostrarlo como pista (`hintText`) como para completar el
+  /// peso cuando el campo se deja en blanco al guardar.
+  double? _lastWeightKg;
+  bool _isLoadingLastWeight = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastWeight();
+  }
+
+  Future<void> _loadLastWeight() async {
+    final last = await widget.repository.getLastMeasurement();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _lastWeightKg = last?.weightKg;
+      _isLoadingLastWeight = false;
+    });
+  }
+
   @override
   void dispose() {
     _weightController.dispose();
@@ -167,7 +250,11 @@ class _BiometricFormState extends State<_BiometricForm> {
 
   String? _validateWeight(String? input) {
     if (input == null || input.trim().isEmpty) {
-      return 'Ingresa el peso corporal.';
+      // El campo es opcional en cuanto exista un peso previo que
+      // heredar; sin ninguno, sigue siendo obligatorio.
+      return _lastWeightKg == null
+          ? 'Ingresa el peso corporal (no hay un peso previo registrado).'
+          : null;
     }
     final parsed = double.tryParse(input.trim());
     if (parsed == null) {
@@ -228,12 +315,19 @@ class _BiometricFormState extends State<_BiometricForm> {
 
     setState(() => _isSaving = true);
 
+    final weightText = _weightController.text.trim();
     final systolicText = _systolicController.text.trim();
     final diastolicText = _diastolicController.text.trim();
     final heartRateText = _heartRateController.text.trim();
 
+    // El validador ya garantizó que, si el campo quedó en blanco, hay un
+    // `_lastWeightKg` disponible para heredar.
+    final weightKg = weightText.isEmpty
+        ? _lastWeightKg!
+        : double.parse(weightText);
+
     final measurement = BiometricMeasurement(
-      weightKg: double.parse(_weightController.text.trim()),
+      weightKg: weightKg,
       systolicPressure: systolicText.isEmpty ? null : int.parse(systolicText),
       diastolicPressure: diastolicText.isEmpty
           ? null
@@ -272,9 +366,15 @@ class _BiometricFormState extends State<_BiometricForm> {
           TextFormField(
             controller: _weightController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Peso corporal (kg)',
-              border: OutlineInputBorder(),
+              // Mientras se consulta el último peso no se muestra
+              // ninguna pista para no sugerir, por error, que el campo
+              // ya es opcional antes de confirmarlo.
+              hintText: _isLoadingLastWeight || _lastWeightKg == null
+                  ? null
+                  : 'Opcional: se reutilizará $_lastWeightKg kg',
+              border: const OutlineInputBorder(),
             ),
             validator: _validateWeight,
           ),

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/food.dart';
-import '../models/glucose_measurement.dart';
 import '../models/meal.dart';
 import '../services/glucose_import_repository.dart';
 import '../services/glucose_repository.dart';
 import '../services/meal_glucose_reminder_coordinator.dart';
 import '../services/meal_repository.dart';
+import 'glucose_measurement_prompt.dart';
 import 'glucose_screen.dart';
 
 /// Pantalla del módulo de Comidas, con dos pestañas: **Registrar** (nueva
@@ -107,38 +107,10 @@ class _MealScreenState extends State<MealScreen>
       return;
     }
 
-    final wantsToMeasure = await showDialog<bool>(
+    final measurement = await offerGlucoseMeasurement(
       context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.bloodtype, color: Colors.red),
-        title: const Text('¿Registrar tu glucosa?'),
-        content: const Text(
-          'Puedes registrar ahora una medición de glucosa asociada a '
-          'esta comida.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Ahora no'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Medir glucosa'),
-          ),
-        ],
-      ),
-    );
-
-    if (wantsToMeasure != true || !mounted) {
-      return;
-    }
-
-    final measurement = await Navigator.push<GlucoseMeasurement>(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            GlucoseScreen(importRepository: widget.glucoseImportRepository),
-      ),
+      associationDescription: 'asociada a esta comida',
+      importRepository: widget.glucoseImportRepository,
     );
     if (measurement == null) {
       return;

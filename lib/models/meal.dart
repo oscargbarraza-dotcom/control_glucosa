@@ -3,7 +3,13 @@ import 'package:uuid/uuid.dart';
 import 'food.dart';
 
 /// Tipo de comida registrada.
-enum MealType { breakfast, lunch, snack, dinner, other }
+///
+/// [once] se agregó como categoría propia para la "once" chilena (una
+/// colación de media tarde, distinta de una colación menor entre
+/// comidas). Se insertó como un valor nuevo del enum -en vez de
+/// reutilizar [snack]- para no perder la distinción con los registros
+/// ya persistidos que usan `snack` como colación genérica.
+enum MealType { breakfast, lunch, once, snack, dinner, other }
 
 /// Extensión con el texto legible para cada [MealType].
 extension MealTypeLabel on MealType {
@@ -13,8 +19,10 @@ extension MealTypeLabel on MealType {
         return 'Desayuno';
       case MealType.lunch:
         return 'Almuerzo';
+      case MealType.once:
+        return 'Once';
       case MealType.snack:
-        return 'Once/Merienda';
+        return 'Colación';
       case MealType.dinner:
         return 'Cena';
       case MealType.other:

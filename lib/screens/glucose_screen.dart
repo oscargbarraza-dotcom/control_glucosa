@@ -21,7 +21,7 @@ const Map<GlucoseMoment, (IconData, Color)> _momentVisuals = {
 /// Al guardar, retorna un [GlucoseMeasurement] a la pantalla anterior
 /// mediante `Navigator.pop`.
 class GlucoseScreen extends StatefulWidget {
-  const GlucoseScreen({super.key, this.importRepository});
+  const GlucoseScreen({super.key, this.importRepository, this.initialComment});
 
   /// Repositorio de importación manual desde sensores/CGM (Health
   /// Connect/Apple Health), usado por el botón "Tomar desde sensor"
@@ -30,6 +30,13 @@ class GlucoseScreen extends StatefulWidget {
   /// necesitan probar esa funcionalidad).
   final GlucoseImportRepository? importRepository;
 
+  /// Comentario con el que se precarga el campo "Comentario" al abrir
+  /// la pantalla (por ejemplo, "60 minutos"/"90 minutos" cuando viene
+  /// desde un recordatorio post-comida). Sigue siendo editable: el
+  /// usuario puede modificarlo o borrarlo antes de guardar. Si es
+  /// `null`, el campo empieza vacío.
+  final String? initialComment;
+
   @override
   State<GlucoseScreen> createState() => _GlucoseScreenState();
 }
@@ -37,7 +44,9 @@ class GlucoseScreen extends StatefulWidget {
 class _GlucoseScreenState extends State<GlucoseScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _glucoseController = TextEditingController();
-  final TextEditingController _commentController = TextEditingController();
+  late final TextEditingController _commentController = TextEditingController(
+    text: widget.initialComment ?? '',
+  );
 
   GlucoseMoment _selectedMoment = GlucoseMoment.now;
   bool _isFetchingFromSensor = false;

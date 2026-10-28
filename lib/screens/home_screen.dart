@@ -416,8 +416,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final result = await Navigator.push<GlucoseMeasurement>(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            GlucoseScreen(importRepository: _importRepository),
+        builder: (context) => GlucoseScreen(
+          importRepository: _importRepository,
+          initialComment: '${reminder.offsetMinutes} minutos',
+        ),
       ),
     );
 
@@ -501,26 +503,41 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadLastMeasurement();
   }
 
-  void _openMedicationScreen() {
-    Navigator.push(
+  Future<void> _openMedicationScreen() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            MedicationScreen(repository: _medicationRepository),
+        builder: (context) => MedicationScreen(
+          repository: _medicationRepository,
+          glucoseRepository: _repository,
+          glucoseImportRepository: _importRepository,
+        ),
       ),
     );
+
+    // Mismo motivo que en `_openMealScreen`: `MedicationScreen` puede
+    // haber agregado una medición de glucosa sin avisar a `HomeScreen`
+    // directamente.
+    await _loadLastMeasurement();
   }
 
-  void _openBiometricScreen() {
-    Navigator.push(
+  Future<void> _openBiometricScreen() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => BiometricScreen(
           repository: _biometricRepository,
           profileRepository: _profileRepository,
+          glucoseRepository: _repository,
+          glucoseImportRepository: _importRepository,
         ),
       ),
     );
+
+    // Mismo motivo que en `_openMealScreen`: `BiometricScreen` puede
+    // haber agregado una medición de glucosa sin avisar a `HomeScreen`
+    // directamente.
+    await _loadLastMeasurement();
   }
 
   Future<void> _openAuthScreen() async {

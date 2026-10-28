@@ -844,6 +844,65 @@ void main() {
   });
 
   testWidgets(
+    'Se puede registrar una comida de tipo "Once", distinta de "Colación"',
+    (WidgetTester tester) async {
+      final mealRepository = _FakeMealRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            mealRepository: mealRepository,
+            reminderRepository: _FakeMealGlucoseReminderRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Comida'));
+      await tester.pumpAndSettle();
+
+      // El selector de tipo de comida ofrece "Once" y "Colación" como
+      // opciones distintas (ver MealType.once vs. MealType.snack).
+      await tester.tap(find.byType(DropdownButtonFormField<MealType>));
+      await tester.pumpAndSettle();
+      expect(find.text('Once'), findsOneWidget);
+      expect(find.text('Colación'), findsOneWidget);
+
+      await tester.tap(find.text('Once').last);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Alimento'),
+        'Té',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Cantidad'),
+        '1 taza',
+      );
+      await tester.tap(find.byTooltip('Agregar alimento'));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Guardar'),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('mealFormListView')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pump();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(mealRepository.stored.single.type, MealType.once);
+      // Tras guardar, la pestaña cambia automáticamente a "Historial".
+      expect(find.text('Once'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'Registrar una comida con alimentos la persiste y la muestra en el '
     'historial',
     (WidgetTester tester) async {
@@ -1485,6 +1544,181 @@ void main() {
       expect(find.textContaining('IMC: 25.0 (Sobrepeso)'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'Dejar el peso en blanco reutiliza el peso de la última medición',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final biometricRepository = _FakeBiometricRepository();
+      await biometricRepository.addMeasurement(
+        BiometricMeasurement(weightKg: 68.5, measuredAt: DateTime(2026, 1, 1)),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            biometricRepository: biometricRepository,
+            profileRepository: _FakeUserProfileRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Biometría'));
+      await tester.pumpAndSettle();
+
+      // El campo de peso queda en blanco a propósito: solo se registra
+      // la frecuencia cardíaca ese día.
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Frecuencia cardíaca (lpm)'),
+        '72',
+      );
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Medición guardada.'), findsOneWidget);
+      expect(biometricRepository.stored, hasLength(2));
+      expect(biometricRepository.stored.first.weightKg, 68.5);
+      expect(biometricRepository.stored.first.heartRateBpm, 72);
+    },
+  );
+
+  testWidgets(
+    'Sin ningún peso previo registrado, dejar el peso en blanco muestra '
+    'un error de validación',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final biometricRepository = _FakeBiometricRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            repository: _FakeGlucoseRepository(),
+            biometricRepository: biometricRepository,
+            profileRepository: _FakeUserProfileRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Biometría'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Ingresa el peso corporal (no hay un peso previo registrado).',
+        ),
+        findsOneWidget,
+      );
+      expect(biometricRepository.stored, isEmpty);
+    },
+  );
+
+  testWidgets('Tras guardar una medición de Biometría, se ofrece registrar una '
+      'medición de glucosa', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final biometricRepository = _FakeBiometricRepository();
+    final glucoseRepository = _FakeGlucoseRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          biometricRepository: biometricRepository,
+          profileRepository: _FakeUserProfileRepository(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Biometría'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Peso corporal (kg)'),
+      '70',
+    );
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('¿Registrar tu glucosa?'), findsOneWidget);
+
+    await tester.tap(find.text('Medir glucosa'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Registrar glucosa'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Glucosa mg/dL'),
+      '110',
+    );
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+
+    expect(glucoseRepository.stored?.value, 110);
+  });
+
+  testWidgets('Tras guardar una toma de Medicamentos, se ofrece registrar una '
+      'medición de glucosa', (WidgetTester tester) async {
+    final medicationRepository = _FakeMedicationRepository();
+    final glucoseRepository = _FakeGlucoseRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          medicationRepository: medicationRepository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Medicamentos'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Medicamento'),
+      'Metformina',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Cantidad'),
+      '500',
+    );
+    await tester.tap(find.byTooltip('Agregar medicamento'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Guardar'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('medicationFormListView')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pump();
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('¿Registrar tu glucosa?'), findsOneWidget);
+
+    await tester.tap(find.text('Ahora no'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('¿Registrar tu glucosa?'), findsNothing);
+    expect(glucoseRepository.stored, isNull);
+  });
 
   testWidgets('Tocar el ícono de Cuenta navega a AuthScreen', (
     WidgetTester tester,
@@ -2169,15 +2403,65 @@ void main() {
     },
   );
 
+  testWidgets('Registrar ahora desde el diálogo navega a GlucoseScreen con el '
+      'comentario "60 minutos" precargado (pero editable) y resuelve el '
+      'recordatorio', (WidgetTester tester) async {
+    final reminderRepository = _FakeMealGlucoseReminderRepository();
+    await reminderRepository.addReminders([
+      MealGlucoseReminder(
+        mealId: 1,
+        offsetMinutes: 60,
+        dueAt: DateTime.now().subtract(const Duration(minutes: 5)),
+      ),
+    ]);
+    final glucoseRepository = _FakeGlucoseRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: glucoseRepository,
+          reminderRepository: reminderRepository,
+          enableMealReminders: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Registrar ahora'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Registrar glucosa'), findsOneWidget);
+    // El comentario viene precargado con los minutos del recordatorio,
+    // pero el campo sigue siendo editable (no es de solo lectura).
+    expect(find.text('60 minutos'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Glucosa mg/dL'),
+      '150',
+    );
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+
+    expect(glucoseRepository.stored?.value, 150);
+    // Al guardar sin editar el comentario precargado, se conserva tal
+    // cual (el comentario autogenerado de respaldo solo se aplica
+    // cuando el usuario deja el campo vacío).
+    expect(glucoseRepository.stored?.comment, '60 minutos');
+    expect(
+      reminderRepository._reminders.single.status,
+      MealGlucoseReminderStatus.resolvedManually,
+    );
+  });
+
   testWidgets(
-    'Registrar ahora desde el diálogo navega a GlucoseScreen y resuelve '
-    'el recordatorio',
+    'Si se borra el comentario precargado "90 minutos" antes de guardar, '
+    'se aplica el comentario autogenerado de respaldo',
     (WidgetTester tester) async {
       final reminderRepository = _FakeMealGlucoseReminderRepository();
       await reminderRepository.addReminders([
         MealGlucoseReminder(
           mealId: 1,
-          offsetMinutes: 60,
+          offsetMinutes: 90,
           dueAt: DateTime.now().subtract(const Duration(minutes: 5)),
         ),
       ]);
@@ -2197,23 +2481,22 @@ void main() {
       await tester.tap(find.text('Registrar ahora'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Registrar glucosa'), findsOneWidget);
+      expect(find.text('90 minutos'), findsOneWidget);
 
+      // El campo "Comentario" en GlucoseScreen es un TextField (no un
+      // TextFormField, a diferencia de "Glucosa mg/dL").
+      await tester.enterText(find.widgetWithText(TextField, 'Comentario'), '');
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Glucosa mg/dL'),
-        '150',
+        '160',
       );
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
 
-      expect(glucoseRepository.stored?.value, 150);
+      expect(glucoseRepository.stored?.value, 160);
       expect(
         glucoseRepository.stored?.comment,
-        'Medición post-comida (+60 min).',
-      );
-      expect(
-        reminderRepository._reminders.single.status,
-        MealGlucoseReminderStatus.resolvedManually,
+        'Medición post-comida (+90 min).',
       );
     },
   );

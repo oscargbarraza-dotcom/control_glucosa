@@ -5,6 +5,15 @@ Aplicación Flutter para registrar mediciones personales de glucosa junto con el
 > [!IMPORTANT]
 > El proyecto se encuentra en una etapa inicial (MVP). No es un dispositivo médico ni sustituye el diagnóstico, tratamiento o asesoramiento de un profesional de la salud.
 
+> [!NOTE]
+> Este proyecto **no es Python**: está construido en **Flutter/Dart**.
+> Las buenas prácticas de estilo, formateo y pruebas que en un proyecto
+> Python se guían por PEP 8/`ruff`/`pytest` se aplican aquí con sus
+> equivalentes del ecosistema Dart/Flutter: `dart format`, `flutter
+> analyze` (con `package:flutter_lints`) y `flutter test`. Ver detalle
+> en la sección "Tecnologías y dependencias" y en `PROJECT_CONTEXT.md`
+> ("Buenas prácticas aplicadas (equivalente a PEP 8 en Dart/Flutter)").
+
 ## Estado actual
 
 La aplicación permite:
@@ -38,8 +47,8 @@ gracias a la persistencia local en SQLite (`sqflite`).
 
 Además, el módulo de **Comida** permite:
 
-- Registrar una comida indicando su tipo (Desayuno, Almuerzo,
-  Once/Merienda, Cena u Otro/Snack), agregando uno o más alimentos con su
+- Registrar una comida indicando su tipo (Desayuno, Almuerzo, Once,
+  Colación, Cena u Otro/Snack), agregando uno o más alimentos con su
   cantidad en texto libre (ej. "1 taza", "2 rebanadas") y un comentario
   opcional.
 - Ver el **Historial** de comidas ya registradas (tipo, fecha/hora,
@@ -131,6 +140,14 @@ usuario e IMC) e **importación manual desde sensores/CGM** ya están
 implementados.
 
 ## Tecnologías y dependencias
+
+> Lenguaje y framework: **Dart + Flutter** (no Python). El estándar de
+> estilo equivalente a PEP 8 en este ecosistema es
+> [Effective Dart](https://dart.dev/effective-dart), aplicado vía
+> `dart format` (formateo), `flutter analyze` con
+> `package:flutter_lints` (linting) y `flutter test` (pruebas
+> unitarias/widgets), tal como se detalla en "Calidad y pruebas" más
+> abajo.
 
 - Flutter 3.44.8 (canal `stable`).
 - Dart 3.12.2.
@@ -306,18 +323,21 @@ flutter test
 Estado actual de la revisión:
 
 - `flutter analyze`: **No issues found!**
-- `flutter test`: **All tests passed!** (122/122).
+- `flutter test`: **All tests passed!** (135/135).
 - `flutter build apk --debug`: compila correctamente (verificado tras
   integrar `firebase_auth`/`google_sign_in`/`cloud_firestore` y, más
   recientemente, `flutter_local_notifications`/`timezone`/
   `flutter_timezone`).
-- `flutter build apk --release`: compila correctamente (verificado
-  2026-10-21; genera
-  `build/app/outputs/flutter-apk/app-release.apk`, ≈55 MB, firmado con
-  las claves de **debug** —ver `TODO` en
-  `android/app/build.gradle.kts`—, por lo que sirve para instalar en
-  dispositivos propios pero no para publicar en Google Play sin
-  configurar antes un keystore de release propio).
+- `flutter build apk --release`: compila correctamente y genera
+  `build/app/outputs/flutter-apk/app-release.apk` (≈55 MB), firmado
+  con el **keystore de release real** del proyecto a partir de
+  `android/key.properties` (no versionado; ver
+  `android/app/build.gradle.kts`), verificado con `apksigner verify
+  --print-certs`. Es un APK universal (incluye todas las ABI:
+  `armeabi-v7a`, `arm64-v8a`, `x86_64`), válido tanto para instalar
+  directamente en un dispositivo como insumo previo a la publicación
+  en Google Play (que además exige un `.aab`, ver
+  `flutter build appbundle --release`).
 
 Incidencias previamente conocidas y ya resueltas:
 

@@ -155,7 +155,8 @@ Responsable de:
 
 Responsable de:
 
-* Registro de un nuevo peso corporal (valor numérico en kg, comentario).
+* Registro de un nuevo peso corporal (valor numérico en kg, opcional si
+  ya hay un peso previo que heredar; comentario también opcional).
 * Historial de pesos ya guardados.
 * Ambas vistas conviven en pestañas propias (`Registrar`/`Historial`)
   dentro de la misma pantalla, igual patrón que `MealScreen`/
@@ -406,9 +407,10 @@ Decisiones de diseño registradas:
 
 ### Registro de biometría
 
-Implementado (peso corporal obligatorio; presión arterial, frecuencia
-cardíaca e IMC opcionales — el IMC se calcula a partir del perfil de
-usuario).
+Implementado (peso corporal opcional si ya hay un peso previo que
+heredar — ver "Historial de cambios" del 2026-10-28, caso contrario
+sigue siendo obligatorio; presión arterial, frecuencia cardíaca e IMC
+opcionales — el IMC se calcula a partir del perfil de usuario).
 
 Se creó el módulo de Biometría, siguiendo el modelo simple de
 `GlucoseMeasurement` (no el modelo relacional catálogo+items de
@@ -451,9 +453,11 @@ Comidas/Medicamentos), porque no hay múltiples valores por registro:
   `saveProfile` con `ConflictAlgorithm.replace`) en lugar de un
   `AUTOINCREMENT` como el resto de tablas.
 * `lib/screens/biometric_screen.dart` (`BiometricScreen`): pantalla con
-  pestañas **Registrar** (peso en kg obligatorio; presión sistólica y
-  diastólica opcionales, completadas juntas o ninguna; frecuencia
-  cardíaca opcional; comentario opcional), **Perfil** (altura en cm
+  pestañas **Registrar** (peso en kg opcional si ya existe una medición
+  previa con peso —se hereda su valor—, obligatorio en caso contrario;
+  presión sistólica y diastólica opcionales, completadas juntas o
+  ninguna; frecuencia cardíaca opcional; comentario opcional), **Perfil**
+  (altura en cm
   obligatoria; nombre a mostrar, sexo biológico y fecha de nacimiento —
   vía `showDatePicker` — opcionales) e **Historial** (lista de
   mediciones guardadas, de la más reciente a la más antigua, mostrando
@@ -544,6 +548,19 @@ Problemas menores observados:
 
 # Stack tecnológico
 
+> **Aclaración importante:** este proyecto **no es un proyecto Python**.
+> Es una aplicación **Flutter/Dart**. Cuando se solicite aplicar
+> "buenas prácticas" o convenciones de estilo equivalentes a PEP 8 (la
+> guía de estilo de Python), deben interpretarse y aplicarse sus
+> **equivalentes en el ecosistema Dart/Flutter**, no las herramientas o
+> reglas de Python. La tabla de equivalencias está en la sección
+> "Buenas prácticas aplicadas (equivalente a PEP 8 en Dart/Flutter)",
+> más abajo. Las únicas referencias a Python en este repositorio
+> corresponden a scripts auxiliares puntuales (`tool/generate_icon_assets.py`,
+> `tool/generate_play_store_assets.py`, `tool/fix_screenshot_aspect_ratio.py`),
+> usados solo para generar assets gráficos de la ficha de Play Store;
+> no forman parte de la aplicación ni de su lógica de negocio.
+
 ## Lenguaje
 
 Dart.
@@ -553,6 +570,34 @@ Dart.
 Flutter.
 
 No se utiliza Jetpack Compose ni XML.
+
+## Buenas prácticas aplicadas (equivalente a PEP 8 en Dart/Flutter)
+
+Dart/Flutter no usa PEP 8 (es una guía específica de Python); el
+estándar de estilo equivalente y oficial del ecosistema es
+[Effective Dart](https://dart.dev/effective-dart), aplicado en este
+proyecto mediante las siguientes herramientas y convenciones:
+
+| Práctica Python (PEP 8 y afines) | Equivalente aplicado en este proyecto (Dart/Flutter) |
+| --- | --- |
+| Guía de estilo PEP 8 | [Effective Dart](https://dart.dev/effective-dart) (style, usage, design, documentation) |
+| Formateador `black`/`ruff format` | `dart format` (determinista, oficial del SDK; sin configuración propia, se usa el estilo por defecto) |
+| Linter `ruff check`/`flake8`/`pylint` | `flutter analyze`, configurado en `analysis_options.yaml` con el set `package:flutter_lints/flutter.yaml` |
+| `snake_case` para funciones/variables | `camelCase` para variables/funciones, `PascalCase` para clases/tipos (convención Dart) |
+| Type hints (`mypy`/anotaciones) | Dart es de tipado estático por diseño; se evita `dynamic` salvo casos justificados |
+| Docstrings (`"""..."""`) | Comentarios de documentación `///` sobre clases/métodos públicos relevantes |
+| `pytest` | `flutter test` (unit + widget tests en `test/`) |
+| Entornos virtuales (`venv`) | Gestión de dependencias vía `pubspec.yaml` + `pubspec.lock` (equivalente a `requirements.txt`/`poetry.lock`) |
+| `__init__.py`/paquetes | Organización por carpetas en `lib/` (`models/`, `screens/`, `services/`) con un `import` explícito por archivo |
+
+Verificación de rutina antes de cada commit (equivalente al flujo
+`ruff format` + `ruff check` + `pytest` de un proyecto Python):
+
+```bash
+dart format .
+flutter analyze
+flutter test
+```
 
 ## Plataforma
 
@@ -1411,9 +1456,11 @@ Función:
 
 Modelo inmutable `Meal` (id, uuid, type, eatenAt, comment, items) y
 `MealFoodItem` (id, food, quantity), más el enum `MealType` (breakfast,
-lunch, snack, dinner, other) con su extensión `label`. Los campos `id`
-son opcionales y los asigna el repositorio al persistir. `uuid` sigue
-el mismo patrón que en `GlucoseMeasurement` (generado automáticamente
+lunch, once, snack, dinner, other) con su extensión `label` ("once" se
+agregó como categoría propia para la once chilena, distinta de "snack"
+—"Colación"—; ver "Historial de cambios" del 2026-10-28). Los campos
+`id` son opcionales y los asigna el repositorio al persistir. `uuid`
+sigue el mismo patrón que en `GlucoseMeasurement` (generado automáticamente
 si no se provee).
 
 ---
@@ -2056,6 +2103,75 @@ Prioridad futura:
 ---
 
 # Historial de cambios
+
+## 2026-10-28 (b) — APK de release para compartir y aclaración de stack tecnológico (no Python)
+
+* Se generó un nuevo `app-release.apk` (`flutter build apk --release`)
+  tras los cambios de la entrada anterior (peso opcional, categoría
+  "Once", prompt de glucosa compartido), firmado con el keystore de
+  release real del proyecto (`android/key.properties` presente en esta
+  máquina), listo para compartir directamente a un dispositivo Android
+  (`minSdk 26`, APK universal con `armeabi-v7a`/`arm64-v8a`/`x86_64`,
+  ≈55.5 MB).
+* Se corrigió documentación desactualizada en `README.md` que todavía
+  indicaba que el APK de release se firmaba con las claves de
+  **debug**: desde que existe `android/key.properties` (ver commit
+  `9f79412`), `flutter build apk --release` firma con el keystore de
+  release real, verificable con `apksigner verify --print-certs`.
+* Se agregó una aclaración explícita, a pedido del usuario, en
+  `PROJECT_CONTEXT.md` (sección "Stack tecnológico") y en `README.md`:
+  **este proyecto no es Python, es Flutter/Dart**. Se documentó una
+  tabla de equivalencias entre prácticas típicas de un proyecto Python
+  (PEP 8, `ruff`/`black`, `pytest`, `mypy`, `venv`) y sus equivalentes
+  reales ya aplicados en este proyecto Dart/Flutter (Effective Dart,
+  `dart format`, `flutter analyze` con `flutter_lints`, `flutter test`,
+  tipado estático nativo, `pubspec.yaml`/`pubspec.lock`), para evitar
+  ambigüedad en futuras sesiones sobre qué herramientas/convenciones
+  corresponde aplicar.
+* Verificación: `dart format --set-exit-if-changed` sobre los archivos
+  tocados en la sesión anterior → 0 cambios; `flutter analyze` → *No
+  issues found!*; `flutter test` → *All tests passed!* (135/135).
+
+## 2026-10-28 — Peso opcional en Biometría, categoría "Once", y prompt de glucosa compartido tras Biometría/Medicamentos
+
+* Decisión: se evaluó reutilizar `MealType.snack` para la "once" chilena
+  (una colación de media tarde) o agregar un valor nuevo al enum; se
+  eligió agregar `MealType.once` como categoría propia, manteniendo
+  `snack` (re-etiquetado como "Colación") para no perder la distinción
+  en los registros ya persistidos en SQLite/Firestore. Al serializarse
+  como texto (`meal.type.name`), el valor nuevo no requirió ninguna
+  migración de esquema (`_schemaVersion` de `AppDatabase` sigue en 8).
+* `lib/models/meal.dart`: `MealType` pasó de 5 a 6 valores
+  (`breakfast, lunch, once, snack, dinner, other`); `MealTypeLabel`
+  ahora distingue "Once" de "Colación".
+* Se creó `lib/screens/glucose_measurement_prompt.dart` con la función
+  compartida `offerGlucoseMeasurement` (diálogo "¿Registrar tu
+  glucosa?" + navegación a `GlucoseScreen`), extraída de `MealScreen`
+  para evitar duplicar el mismo flujo en cada módulo que decide
+  ofrecerlo.
+* `MedicationScreen` y `BiometricScreen` ganaron los parámetros
+  opcionales `glucoseRepository`/`glucoseImportRepository` (mismo
+  patrón que `MealScreen`) y ahora, tras guardar una toma o una
+  medición, ofrecen registrar de inmediato una medición de glucosa
+  usando `offerGlucoseMeasurement`. `HomeScreen` les inyecta
+  `_repository`/`_importRepository` y recarga la tarjeta principal al
+  volver (`_loadLastMeasurement`), igual que ya hacía para `MealScreen`.
+* `BiometricScreen`: el peso corporal deja de ser obligatorio en cada
+  registro. `_BiometricForm` ahora recibe el `BiometricRepository` y
+  consulta `getLastMeasurement()` al abrirse; si el campo de peso se
+  deja en blanco, se reutiliza ese último peso (mostrado también como
+  pista en el campo). Si todavía no hay ninguna medición previa con
+  peso, el campo sigue siendo obligatorio con un mensaje explícito.
+* `test/models/meal_test.dart` (nuevo): etiquetas de `MealType`.
+* `test/services/meal_repository_test.dart`: caso de persistencia para
+  `MealType.once`.
+* `test/widget_test.dart`: casos nuevos para selección de "Once" en el
+  formulario de Comida, herencia del peso al dejarlo en blanco, error
+  de validación sin peso previo, y el prompt de glucosa tras guardar en
+  Biometría y en Medicamentos.
+* Verificación: `dart format`, `flutter analyze` y `flutter test`
+  ejecutados tras estos cambios (ver resultado al cierre de esta
+  sesión).
 
 ## 2026-10-23 — Assets gráficos faltantes para la ficha de Google Play
 

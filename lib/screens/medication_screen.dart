@@ -3,7 +3,10 @@ import 'package:intl/intl.dart';
 
 import '../models/medication.dart';
 import '../models/medication_intake.dart';
+import '../services/glucose_import_repository.dart';
+import '../services/glucose_repository.dart';
 import '../services/medication_repository.dart';
+import 'glucose_measurement_prompt.dart';
 
 /// Pantalla del módulo de Medicamentos, con dos pestañas: **Registrar**
 /// (nueva toma) e **Historial** (tomas ya guardadas).
@@ -12,10 +15,28 @@ import '../services/medication_repository.dart';
 /// propias en lugar de depender de `HistoryScreen`, para mantener cada
 /// módulo de dominio aislado y testeable.
 class MedicationScreen extends StatefulWidget {
-  const MedicationScreen({super.key, required this.repository});
+  const MedicationScreen({
+    super.key,
+    required this.repository,
+    this.glucoseRepository,
+    this.glucoseImportRepository,
+  });
 
   /// Repositorio desde el que se cargan y guardan las tomas.
   final MedicationRepository repository;
+
+  /// Repositorio de mediciones de glucosa. Si no es `null`, tras guardar
+  /// una toma se ofrece registrar de inmediato una medición (mismo
+  /// patrón que `MealScreen`). Si es `null`, no se ofrece esta opción
+  /// (por ejemplo, en tests que no necesitan probar esta
+  /// funcionalidad).
+  final GlucoseRepository? glucoseRepository;
+
+  /// Repositorio de importación manual desde sensores/CGM, reenviado a
+  /// `GlucoseScreen` cuando el usuario elige registrar una medición
+  /// justo después de guardar la toma. Si es `null`, esa pantalla no
+  /// muestra el botón "Tomar desde sensor".
+  final GlucoseImportRepository? glucoseImportRepository;
 
   @override
   State<MedicationScreen> createState() => _MedicationScreenState();
@@ -55,6 +76,34 @@ class _MedicationScreenState extends State<MedicationScreen>
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Toma guardada.')));
+
+    await _offerGlucoseMeasurement();
+  }
+
+  /// Tras guardar una toma, pregunta si se quiere registrar de
+  /// inmediato una medición de glucosa, ya que varios medicamentos
+  /// (insulina, hipoglucemiantes orales) afectan directamente la
+  /// glucemia.
+  ///
+  /// No hace nada si no se proveyó [MedicationScreen.glucoseRepository]
+  /// (por ejemplo, en tests que no necesitan probar esta
+  /// funcionalidad).
+  Future<void> _offerGlucoseMeasurement() async {
+    final glucoseRepository = widget.glucoseRepository;
+    if (glucoseRepository == null || !mounted) {
+      return;
+    }
+
+    final measurement = await offerGlucoseMeasurement(
+      context: context,
+      associationDescription: 'asociada a esta toma',
+      importRepository: widget.glucoseImportRepository,
+    );
+    if (measurement == null) {
+      return;
+    }
+
+    await glucoseRepository.addMeasurement(measurement);
   }
 
   @override
