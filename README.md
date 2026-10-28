@@ -14,16 +14,14 @@ Android *SeguimientoGlucosa* sincroniza en Firebase Firestore: glucosa, comidas,
 - **Fase 4 (Glucosa): COMPLETADA (2026-10-27).** Importador de LibreView, base local cifrada, cobertura y TIR
   estimado, y dashboard de Glucosa (filtros, indicadores por fuente, procedencia de las mediciones de Firebase,
   gráfico, distribuciones y tabla), con acceso local protegido y diseño compacto en tema oscuro.
-- **Fase D (Alimentación): D2 y D3 cerradas; D4 (interfaz) implementada (2026-10-27)** y a la espera de revisión.
-  Datos e indicadores de comidas (D2), asociación de cada comida con la glucosa de sus ventanas, referencia y previa,
-  hitos +60/+90 min con tolerancia configurable y coincidencias probables manual ↔ LibreView (D3), y la página
-  **Alimentación** (D4): filtros de período, tipo, alimento y fuente, filtros de visualización (disponibilidad y comidas
-  aisladas), indicadores de comidas y de mediciones manuales cercanas a +60/+90 (elegibles y pendientes por separado),
-  distribuciones, selector de comida individual con su gráfico de −60 a +180 min y tablas detalladas. Es descriptivo:
-  no calcula cumplimiento de recordatorios ni atribuye efectos de alimentos sobre la glucosa. Medicamentos, Biometría y
-  Configuración son por ahora marcadores. Pendientes para fases posteriores: optimización de gráficos grandes (M-4),
-  empaquetado Windows y otros ajustes técnicos. El detalle de decisiones y avance está en
-  [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
+- **Fase D (Alimentación): COMPLETADA (2026-10-28).** Etapas D1 a D6 aprobadas: datos e indicadores de comidas,
+  asociación de cada comida con la glucosa de sus ventanas (referencia y previa, hitos +60/+90 min con tolerancia
+  configurable, coincidencias probables manual ↔ LibreView), la página **Alimentación**, y una auditoría funcional,
+  visual y de seguridad con sus correcciones. Es descriptiva: no calcula cumplimiento de recordatorios ni atribuye
+  efectos de alimentos sobre la glucosa. Ver [Página Alimentación](#página-alimentación) y sus limitaciones.
+- **Siguiente módulo previsto:** Medicamentos (sin iniciar). Biometría y Configuración son por ahora marcadores.
+  Pendientes para fases posteriores: optimización de gráficos grandes (M-4), empaquetado Windows y otros ajustes
+  técnicos. El detalle de decisiones y avance está en [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
 
 ## Desarrollo y aplicación final
 
@@ -159,6 +157,35 @@ Sigue siendo para un equipo de un solo usuario; ver las amenazas que quedan fuer
   LibreView»).
 - Los filtros de clasificación y momento afectan al gráfico y la tabla; los indicadores describen siempre el
   período completo.
+
+### Página Alimentación
+
+- **Filtros** (barra lateral): período (como en Glucosa), tipo de comida, alimento (muestra las comidas que contengan
+  alguno de los elegidos; vacío = todos), fuente de glucosa (manual, importada, sensor), disponibilidad de datos,
+  «solo comidas aisladas», tolerancia de los hitos (entero de 5 a 20 min; 10 por defecto) y escaneos (apagados).
+  Período, tipo y alimento definen qué comidas se cuentan; disponibilidad y «aisladas» solo cambian lo que se muestra.
+- **Indicadores:** comidas, días registrados, comidas por día con registros y alimentos distintos. Para los hitos de
+  +60 y +90 min, tarjetas separadas con las comidas que tienen una medición cercana, las elegibles (el hito ya ocurrió)
+  y las pendientes (aún no ocurre; no cuentan como «sin medición»). Una misma medición puede asociarse a más de una
+  comida cercana.
+- **Gráficos y tablas:** distribución por tipo y horario, ranking de alimentos, actividad diaria; selector de comida con
+  su gráfico de −60 a +180 min (marcas en 0, +60 y +90, bandas de tolerancia, comidas cercanas) y tablas de comidas,
+  hitos, mediciones cercanas y cobertura por fuente. Fecha, tipo y alimentos quedan fijas al desplazar la tabla.
+- **Fuentes que nunca se mezclan:** mediciones manuales y marcadas «Importado desde otra aplicación» (Firebase) y
+  sensor (LibreView). Si Firebase no se puede leer se indica «Fuente no disponible»; una colección vacía dice «Sin
+  mediciones en Firebase»; la ausencia de una medición cercana dice «Sin medición manual registrada». Si el export de
+  LibreView termina antes de una comida, se muestra «export desactualizado», no un hueco del sensor.
+- **Alcance:** descriptivo. Sin cálculo de cumplimiento de recordatorios (los comentarios «60/90 minutos» no se usan),
+  sin atribución causal y sin exportaciones.
+
+**Limitaciones conocidas**
+
+- En ventanas de menos de ~690 px de ancho, Streamlit desancla las columnas fijas de la tabla (regla de la plataforma);
+  la tabla sigue siendo completa y se desplaza.
+- La columna «Alimentos» recorta textos largos dentro de la celda (el texto completo se ve al expandirla) — mejora
+  visual menor pendiente.
+- La integración del sensor con comidas posteriores al fin del último CSV importado de LibreView depende de importar
+  un export actualizado (pendiente).
 
 ## Pruebas
 
