@@ -180,13 +180,6 @@ flutter_launcher_icons:
     image_path: "assets/icon/icon.png"
     background_color: "#0D47A1"
     theme_color: "#0D47A1"
-  windows:
-    generate: true
-    image_path: "assets/icon/icon.png"
-    icon_size: 256
-  macos:
-    generate: true
-    image_path: "assets/icon/icon.png"
 
 # Configuración de `flutter_native_splash` (pantalla de bienvenida
 # nativa que se muestra mientras Flutter termina de cargar, antes de

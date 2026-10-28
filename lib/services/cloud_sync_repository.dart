@@ -43,23 +43,6 @@ class CloudSyncPullSummary {
       addedBiometricMeasurements;
 }
 
-/// Lado de solo lectura de la sincronización en la nube: permite
-/// observar en tiempo real los cuatro tipos de datos de salud de un
-/// usuario autenticado, sin poder crearlos, editarlos ni eliminarlos.
-///
-/// Es el contrato que usan las plataformas de escritorio (Windows,
-/// macOS), donde la app actúa como un visor de solo lectura: ver
-/// `CloudViewerScreen` y la sección "Sincronización en la nube" de
-/// `PROJECT_CONTEXT.md`. Cada stream emite la lista completa (más
-/// reciente primero) cada vez que cambia algo en la nube para ese
-/// usuario, y una lista vacía si nadie tiene sesión iniciada.
-abstract class CloudSyncViewer {
-  Stream<List<GlucoseMeasurement>> watchGlucoseMeasurements();
-  Stream<List<Meal>> watchMeals();
-  Stream<List<MedicationIntake>> watchMedicationIntakes();
-  Stream<List<BiometricMeasurement>> watchBiometricMeasurements();
-}
-
 /// Contrato para la sincronización automática en la nube de todos los
 /// datos de salud (glucosa, comidas, medicamentos, biometría) entre los
 /// dispositivos móviles (Android/iOS) de un mismo usuario.
@@ -80,11 +63,10 @@ abstract class CloudSyncViewer {
 ///
 /// SQLite sigue siendo el almacenamiento principal en Android/iOS; esta
 /// interfaz nunca reemplaza datos locales, solo los complementa.
+///
 /// Contrato mínimo para eliminar todos los datos en la nube asociados
-/// al usuario autenticado. Se mantiene separado de [CloudSyncViewer]
-/// para que el visor de escritorio siga siendo de solo lectura salvo
-/// por esta única acción exigida por las tiendas: borrar la cuenta y
-/// sus datos.
+/// al usuario autenticado, como parte del flujo de "eliminar cuenta y
+/// datos" exigido por las tiendas.
 abstract class CloudDataDeletionRepository {
   /// Elimina **todos** los documentos del usuario autenticado en las
   /// cuatro subcolecciones (`glucose_measurements`, `meals`,
@@ -96,8 +78,7 @@ abstract class CloudDataDeletionRepository {
   Future<void> deleteAllCloudData();
 }
 
-abstract class CloudSyncRepository
-    implements CloudSyncViewer, CloudDataDeletionRepository {
+abstract class CloudSyncRepository implements CloudDataDeletionRepository {
   /// Sube [measurement] a la nube bajo el usuario autenticado, de forma
   /// idempotente (sobrescribe si ya existía un registro con el mismo
   /// `uuid`). Si no hay sesión iniciada o falla el envío, no hace nada:
@@ -122,10 +103,8 @@ abstract class CloudSyncRepository
   /// nuevo (por ejemplo, tras cambiar de celular) recupere el
   /// historial completo sin ninguna acción manual del usuario.
   ///
-  /// Lanza [CloudSyncException] si el usuario no tiene sesión iniciada,
-  /// si esta plataforma no tiene almacenamiento local disponible (ver
-  /// `CloudViewerScreen`, que nunca invoca este método), o si falla la
-  /// operación.
+  /// Lanza [CloudSyncException] si el usuario no tiene sesión iniciada
+  /// o si falla la operación.
   Future<CloudSyncPullSummary> pullMissingFromCloud();
 
   /// Elimina **todos** los documentos del usuario autenticado en las

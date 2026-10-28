@@ -50,8 +50,7 @@ class FirebaseAuthRepository implements AuthRepository {
   bool get supportsGoogleSignIn =>
       kIsWeb ||
       defaultTargetPlatform == TargetPlatform.android ||
-      defaultTargetPlatform == TargetPlatform.iOS ||
-      defaultTargetPlatform == TargetPlatform.macOS;
+      defaultTargetPlatform == TargetPlatform.iOS;
 
   @override
   Future<AppUser> registerWithEmail({

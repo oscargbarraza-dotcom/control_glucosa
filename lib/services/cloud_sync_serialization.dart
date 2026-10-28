@@ -1,8 +1,6 @@
-// Funciones de (de)serialización compartidas entre
-// [FirestoreCloudSyncRepository] (mobile: sube y trae registros) y
-// [FirestoreCloudSyncViewer] (escritorio: solo los observa en vivo),
-// para que el formato de cada documento de Firestore tenga una única
-// fuente de verdad.
+// Funciones de (de)serialización usadas por [FirestoreCloudSyncRepository]
+// para convertir cada modelo de salud al/del formato de documento de
+// Firestore, en un único lugar.
 
 import '../models/biometric_measurement.dart';
 import '../models/food.dart';

@@ -184,7 +184,19 @@ implementados.
 - `sqflite_common_ffi: ^2.4.4` (dev) para probar `SqliteGlucoseRepository`
   sobre una base de datos en memoria, sin depender del plugin nativo.
 
-El proyecto está enfocado actualmente en Android, aunque conserva las carpetas de plataforma generadas por Flutter para Android, iOS, Linux, macOS, web y Windows.
+El proyecto está enfocado actualmente en Android, y conserva además la carpeta de plataforma generada por Flutter para iOS, Linux y web. Ya **no** compila para Windows ni macOS: ver "Soporte de plataformas" más abajo.
+
+## Soporte de plataformas
+
+| Plataforma | App completa (registro, SQLite) | Sincronización en la nube | Cómo se cubre |
+| --- | --- | --- | --- |
+| Android | ✅ | ✅ (automática, Firebase) | App Flutter (`android/`), publicada en Google Play. |
+| iOS | ✅ | ✅ (automática, Firebase) | App Flutter (`ios/`). No validada en dispositivo real (ver "Próximos pasos recomendados"). |
+| Linux | ✅ | ❌ (sin soporte oficial de `firebase_auth`/`cloud_firestore`) | App Flutter (`linux/`), funciona íntegramente sobre SQLite local. |
+| Windows | ❌ | 👁️ Solo lectura | [`glucosa_desktop/`](glucosa_desktop/README.md): app Python/Streamlit independiente, visor de solo lectura de lo ya sincronizado en Firestore. No forma parte del build de Flutter. |
+| macOS | ❌ | ❌ | Sin alternativa por ahora. La app Flutter ya no compila para macOS (carpeta `macos/` eliminada). |
+
+Hasta 2026-10-20 este proyecto incluía un visor de solo lectura en Flutter para Windows/macOS (`CloudViewerScreen`). Se reemplazó por `glucosa_desktop/` (ver "Migración del visor de escritorio a `glucosa_desktop`" en `PROJECT_CONTEXT.md`): una app Python/Streamlit independiente, con su propio `README.md`, pensada específicamente para Windows 11. macOS se queda sin visor de escritorio mientras no haya una necesidad concreta que lo justifique.
 
 ## Estructura principal
 
@@ -215,8 +227,9 @@ lib/
 │   ├── user_profile_repository.dart
 │   ├── auth_repository.dart
 │   ├── firebase_auth_repository.dart
-│   ├── backup_repository.dart
-│   └── firestore_backup_repository.dart
+│   ├── cloud_sync_repository.dart
+│   ├── cloud_sync_serialization.dart
+│   └── firestore_cloud_sync_repository.dart
 ├── screens/
 │   ├── home_screen.dart
 │   ├── glucose_screen.dart
@@ -271,15 +284,16 @@ test/
 - `lib/services/user_profile_repository.dart`: interfaz `UserProfileRepository` (perfil único, sin listado ni multiusuario: `getProfile`, `saveProfile`, `clearProfile`) y la implementación `SqliteUserProfileRepository`.
 - `lib/services/auth_repository.dart`: interfaz `AuthRepository` (estado de sesión, registro/inicio de sesión con correo, inicio de sesión con Google, recuperar contraseña, cerrar sesión) y `AuthException` (mensajes de error en español).
 - `lib/services/firebase_auth_repository.dart`: implementación `FirebaseAuthRepository` sobre `firebase_auth` y `google_sign_in`.
-- `lib/services/backup_repository.dart`: interfaz `BackupRepository` (`backup`, `restore`, `getLastBackupTime`) y `BackupException`. `restore` reemplaza los datos locales (no los fusiona), ya documentado en su propio docstring.
-- `lib/services/firestore_backup_repository.dart`: implementación `FirestoreBackupRepository` sobre `cloud_firestore`, que serializa las cuatro colecciones de datos de salud a un único documento `backups/{uid}`.
+- `lib/services/cloud_sync_repository.dart`: interfaces `CloudSyncRepository` (sincronización automática push/pull por `uuid`) y `CloudDataDeletionRepository` (borrado de los datos del usuario en la nube), más `CloudSyncException`/`CloudSyncPullSummary`.
+- `lib/services/cloud_sync_serialization.dart`: funciones de (de)serialización compartidas entre cada modelo de salud y su documento de Firestore.
+- `lib/services/firestore_cloud_sync_repository.dart`: implementación `FirestoreCloudSyncRepository` sobre `cloud_firestore`, con un documento por registro (`users/{uid}/.../{uuid}`) en vez de un único documento con arrays.
 - `lib/screens/home_screen.dart`: carga la última medición desde el repositorio al iniciar, presenta la tarjeta de glucosa y los accesos a los módulos, guarda cada nueva medición recibida, navega a `HistoryScreen`, `MealScreen`, `MedicationScreen`, `BiometricScreen` y (desde el ícono "Cuenta" del `AppBar`) a `AuthScreen`; al iniciar también revisa recordatorios post-comida vencidos vía `MealGlucoseReminderCoordinator` y muestra un diálogo (registrar ahora / descartar) por cada uno que no se resolvió automáticamente. Si se inyecta un `NotificationService` (Fase B), al iniciar también solicita el permiso de notificaciones, reprograma los recordatorios pendientes (`rescheduleAllPending`) y vuelve a revisarlos cada vez que el usuario toca una notificación mostrada por el sistema.
 - `lib/screens/glucose_screen.dart`: contiene el formulario de captura de una medición, con validación, y retorna un `GlucoseMeasurement`.
 - `lib/screens/history_screen.dart`: carga el historial completo de mediciones (`GlucoseRepository.getAllMeasurements`) y lo muestra en dos pestañas: **Lista** (de la más reciente a la más antigua) y **Gráfico** (evolución del valor en el tiempo, vía `GlucoseLineChart`).
 - `lib/screens/meal_screen.dart`: pantalla del módulo de Comidas, con pestañas propias **Registrar** (formulario con alimentos y cantidades) e **Historial** (comidas guardadas).
 - `lib/screens/medication_screen.dart`: pantalla del módulo de Medicamentos, con pestañas propias **Registrar** (formulario con medicamentos, cantidad y unidad) e **Historial** (tomas guardadas).
 - `lib/screens/biometric_screen.dart`: pantalla del módulo de Biometría, con pestañas propias **Registrar** (peso corporal obligatorio; presión arterial y frecuencia cardíaca opcionales), **Perfil** (altura y otros datos personales) e **Historial** (mediciones guardadas, mostrando el IMC calculado a partir del peso de cada medición y la altura vigente del perfil vía `UserProfile.bmiFor`; si el perfil no tiene altura guardada, el IMC no se muestra).
-- `lib/screens/auth_screen.dart`: pantalla de cuenta (opcional); muestra el formulario de inicio de sesión/registro o, si ya hay una sesión activa, el resumen de la cuenta con botones para respaldar/restaurar en la nube (con diálogo de confirmación antes de restaurar) y cerrar sesión.
+- `lib/screens/auth_screen.dart`: pantalla de cuenta (opcional); muestra el formulario de inicio de sesión/registro o, si ya hay una sesión activa, el resumen de la cuenta (la sincronización con la nube es automática, sin botones) con las opciones de cerrar sesión y eliminar cuenta y datos (con diálogo de confirmación no descartable).
 - `lib/widgets/glucose_line_chart.dart`: widget reutilizable `GlucoseLineChart`, el gráfico de líneas (`fl_chart`) con la evolución de glucosa, líneas de referencia y tooltip táctil.
 - `PROJECT_CONTEXT.md`: describe con mayor detalle las decisiones, el alcance y la evolución prevista del proyecto.
 - `PROJECT_GRAPH.md`: grafo de dependencias, imports y navegación entre pantallas.
@@ -426,25 +440,30 @@ Nota sobre pruebas:
    (`dumpsys alarm`, 60/90 min), notificación disparada adelantando
    la hora del dispositivo, e ícono renderizado correctamente
    (`dumpsys notification`, verificación visual).
-3. Evaluar si se necesita sincronización automática/en tiempo real
-   (más allá del respaldo/restauración manual ya implementado). Ya se
-   agregó la clave estable (`uuid`) y la fusión manual
-   ("Fusionar desde la nube", ver más abajo); queda pendiente decidir
-   si además se necesita que ocurra automáticamente/en tiempo real,
-   sin que el usuario tenga que abrir la pantalla de Cuenta y
-   presionar un botón.
+3. ✅ (2026-10-20) Implementada la sincronización automática y
+   silenciosa (push al guardar cada registro, pull de lo que falte al
+   iniciar sesión), que reemplazó por completo el antiguo respaldo/
+   restauración manual. Ver "Sincronización en tiempo real" en
+   `PROJECT_CONTEXT.md`.
 4. ⏸️ (Pospuesto) Verificar en una Mac con Xcode que
    `ios/Runner/GoogleService-Info.plist` (generado vía
    `firebase apps:sdkconfig` y enlazado manualmente al proyecto Xcode,
    ya que `flutterfire configure` no pudo completarlo desde Windows)
    compila y se incluye correctamente al construir para iOS, y que el
-   inicio de sesión con Google, el respaldo/restauración y la
-   importación desde Apple Health funcionan en esa plataforma.
+   inicio de sesión con Google, la sincronización automática en la
+   nube y la importación desde Apple Health funcionan en esa
+   plataforma.
 5. ✅ (2026-10-22) Probados en un dispositivo Android real el inicio
    de sesión con Google (contra Firebase Auth de producción), la
    sincronización automática a Firestore (confirmada en la consola de
    Firebase) y el botón "Importar desde sensor" (Health Connect, con
    el resultado esperado de "permiso denegado" en ese dispositivo).
+6. Validar manualmente `glucosa_desktop/` (login Google OAuth+PKCE,
+   lectura de Firestore, auditoría de datos) en una máquina Windows
+   real. Pendiente por falta de Python/entorno de pruebas dedicado en
+   este momento; ver el estado y los próximos pasos propios de ese
+   subproyecto en
+   [`glucosa_desktop/README.md`](glucosa_desktop/README.md).
 
 ## Política de privacidad
 

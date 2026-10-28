@@ -4,13 +4,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
-import 'screens/cloud_viewer_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/android_notification_service.dart';
 import 'services/darwin_notification_service.dart';
 import 'services/firebase_auth_repository.dart';
-import 'services/firestore_cloud_sync_viewer.dart';
 import 'services/notification_service.dart';
 
 /// Web Client ID del proyecto Firebase `seguimiento-glucosa`, generado
@@ -25,16 +23,18 @@ const String _googleSignInServerClientId =
     '371154041496-p2aekm10mkqjvpitmof0pvo3rkc7m8cs.apps.googleusercontent.com';
 
 /// `google_sign_in` solo tiene implementación de plataforma para Android,
-/// iOS, macOS y Web (ver https://pub.dev/packages/google_sign_in): en
-/// Windows y Linux no hay ningún `GoogleSignInPlatform` registrado, por lo
-/// que `GoogleSignIn.instance.initialize()` lanza `UnimplementedError` en
-/// esas plataformas. Evitamos llamarlo ahí para no crashear la app al
-/// arrancar. Además, [FirebaseAuthRepository.supportsGoogleSignIn] permite
-/// a [AuthScreen] ocultar el botón en plataformas no compatibles; la guarda
-/// defensiva de `signInWithGoogle` conserva un error legible si el método se
-/// invoca directamente de todas formas.
-bool get _supportsGoogleSignIn =>
-    Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+/// iOS, macOS y Web (ver https://pub.dev/packages/google_sign_in). Este
+/// proyecto solo compila para Android/iOS (ver "Migración del visor de
+/// escritorio a `glucosa_desktop`" en `PROJECT_CONTEXT.md`); Linux
+/// conserva su carpeta de Flutter como excepción documentada pero no
+/// tiene ningún `GoogleSignInPlatform` registrado, por lo que
+/// `GoogleSignIn.instance.initialize()` lanzaría `UnimplementedError`
+/// ahí. Evitamos llamarlo fuera de Android/iOS para no crashear la app
+/// al arrancar. Además, [FirebaseAuthRepository.supportsGoogleSignIn]
+/// permite a [AuthScreen] ocultar el botón en plataformas no
+/// compatibles; la guarda defensiva de `signInWithGoogle` conserva un
+/// error legible si el método se invoca directamente de todas formas.
+bool get _supportsGoogleSignIn => Platform.isAndroid || Platform.isIOS;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -157,26 +157,19 @@ class SeguimientoGlucosaApp extends StatelessWidget {
     );
   }
 
-  /// En Windows y macOS la app es un visor de **solo lectura** del
-  /// historial sincronizado en la nube (ver "Sincronización en tiempo
-  /// real" en `PROJECT_CONTEXT.md`): no hay ningún formulario de
-  /// registro, ni almacenamiento local, en esas plataformas. En
-  /// Android/iOS se mantiene [HomeScreen] completo, con sincronización
-  /// automática habilitada (`enableCloudSync`).
+  /// La app soporta oficialmente Android e iOS, con [HomeScreen]
+  /// completo y sincronización automática habilitada
+  /// (`enableCloudSync`). Windows y macOS no tienen build de Flutter en
+  /// este proyecto (ver "Migración del visor de escritorio a
+  /// `glucosa_desktop`" en `PROJECT_CONTEXT.md`): Windows se cubre con
+  /// la app Python/Streamlit de solo lectura `glucosa_desktop/`, y
+  /// macOS no tiene alternativa por ahora.
   ///
-  /// Linux queda fuera de ambos casos (cae en la rama de [HomeScreen])
-  /// porque ni `firebase_auth` ni `cloud_firestore` tienen soporte
-  /// oficial ahí: seguirá funcionando sobre SQLite local, pero sin
-  /// sincronización en la nube.
+  /// Linux conserva la carpeta generada por Flutter como excepción
+  /// documentada: sigue funcionando sobre SQLite local, pero sin
+  /// sincronización en la nube, porque ni `firebase_auth` ni
+  /// `cloud_firestore` tienen soporte oficial ahí.
   Widget _homeForCurrentPlatform() {
-    if (Platform.isWindows || Platform.isMacOS) {
-      final cloudViewer = FirestoreCloudSyncViewer();
-      return CloudViewerScreen(
-        authRepository: authRepository ?? FirebaseAuthRepository(),
-        syncViewer: cloudViewer,
-        cloudDataDeletionRepository: cloudViewer,
-      );
-    }
     return HomeScreen(
       authRepository: authRepository,
       enableCloudSync: true,

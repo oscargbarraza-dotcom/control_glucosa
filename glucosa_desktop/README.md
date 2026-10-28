@@ -1,4 +1,9 @@
-# _glucosa
+# glucosa_desktop
+
+> Subproyecto Python dentro del monorepo `seguimiento_glucosa` (importado con `git subtree` desde su
+> repositorio original `_glucosa`, con historial completo). Independiente del resto del proyecto Flutter:
+> tiene su propio `pyproject.toml`, entorno virtual y pipeline de calidad (`pytest`/`ruff`). Ver "Soporte de
+> plataformas" en el `README.md` de la raíz para el contexto de por qué existe.
 
 Aplicación local para Windows que **consulta y analiza, solo en lectura**, los datos de salud que la app
 Android *SeguimientoGlucosa* sincroniza en Firebase Firestore: glucosa, comidas, medicamentos y biometría.

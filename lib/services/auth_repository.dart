@@ -32,7 +32,7 @@ abstract class AuthRepository {
 
   /// Indica si Google Sign-In está implementado en la plataforma actual.
   ///
-  /// Permite que la interfaz oculte el flujo en Windows/Linux sin acoplar
+  /// Permite que la interfaz oculte el flujo en Linux sin acoplar
   /// las pantallas al sistema operativo ni al plugin `google_sign_in`.
   bool get supportsGoogleSignIn;
 

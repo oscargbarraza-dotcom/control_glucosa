@@ -27,16 +27,12 @@ class DefaultFirebaseOptions {
         return android;
       case TargetPlatform.iOS:
         return ios;
-      case TargetPlatform.macOS:
-        return macos;
-      case TargetPlatform.windows:
-        return windows;
-      case TargetPlatform.linux:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
       default:
+        // Esta app solo compila para Android/iOS (ver "Migración del
+        // visor de escritorio a `glucosa_desktop`" en
+        // `PROJECT_CONTEXT.md`). Windows y macOS ya no tienen apps
+        // Firebase registradas aquí; Linux conserva su carpeta de
+        // Flutter como excepción documentada, pero sin Firebase.
         throw UnsupportedError(
           'DefaultFirebaseOptions are not supported for this platform.',
         );
@@ -57,27 +53,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '371154041496',
     projectId: 'seguimiento-glucosa',
     storageBucket: 'seguimiento-glucosa.firebasestorage.app',
-    androidClientId: '371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com',
-    iosClientId: '371154041496-pe9v01fjiqavin1q8hu4oulc5io0vr7v.apps.googleusercontent.com',
+    androidClientId:
+        '371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com',
+    iosClientId:
+        '371154041496-pe9v01fjiqavin1q8hu4oulc5io0vr7v.apps.googleusercontent.com',
     iosBundleId: 'cl.ogb.seguimientoglucosa.app',
-  );
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyAGnX6qOtKxSvQsnk1lFuQN0D0bjBaR1z4',
-    appId: '1:371154041496:ios:58ff3ebdcfdcbb339daeed',
-    messagingSenderId: '371154041496',
-    projectId: 'seguimiento-glucosa',
-    storageBucket: 'seguimiento-glucosa.firebasestorage.app',
-    androidClientId: '371154041496-761vbj4nr04bc2aocpnel1gfq7gb32rh.apps.googleusercontent.com',
-    iosClientId: '371154041496-pe9v01fjiqavin1q8hu4oulc5io0vr7v.apps.googleusercontent.com',
-    iosBundleId: 'cl.ogb.seguimientoglucosa.app',
-  );
-
-  static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDxVTLk3ZAG8GbkUKQPazMrvcr2-0lqzKo',
-    appId: '1:371154041496:web:a1328b5811d953cf9daeed',
-    messagingSenderId: '371154041496',
-    projectId: 'seguimiento-glucosa',
-    authDomain: 'seguimiento-glucosa.firebaseapp.com',
-    storageBucket: 'seguimiento-glucosa.firebasestorage.app',
   );
 }

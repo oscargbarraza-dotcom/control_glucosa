@@ -24,11 +24,9 @@ import 'medication_repository.dart';
 /// * `users/{uid}/biometric_measurements/{uuid}`
 ///
 /// A diferencia del antiguo `backups/{uid}` (un solo documento con
-/// arrays completos), este esquema permite tanto el envío incremental
-/// de un registro a la vez ([pushGlucoseMeasurement] y equivalentes)
-/// como la escucha en tiempo real de cada subcolección
-/// ([watchGlucoseMeasurements] y equivalentes), sin acercarse al límite
-/// de 1 MiB por documento de Firestore.
+/// arrays completos), este esquema permite el envío incremental de un
+/// registro a la vez ([pushGlucoseMeasurement] y equivalentes) sin
+/// acercarse al límite de 1 MiB por documento de Firestore.
 class FirestoreCloudSyncRepository implements CloudSyncRepository {
   FirestoreCloudSyncRepository({
     fb_auth.FirebaseAuth? firebaseAuth,
@@ -285,57 +283,5 @@ class FirestoreCloudSyncRepository implements CloudSyncRepository {
       }
       await batch.commit();
     }
-  }
-
-  // ---- Watch (lectura en tiempo real, para el visor de escritorio) ----
-
-  @override
-  Stream<List<GlucoseMeasurement>> watchGlucoseMeasurements() {
-    return _watchCollection(
-      _glucoseSubcollection,
-      'measuredAt',
-      glucoseFromMap,
-    );
-  }
-
-  @override
-  Stream<List<Meal>> watchMeals() {
-    return _watchCollection(_mealsSubcollection, 'eatenAt', mealFromMap);
-  }
-
-  @override
-  Stream<List<MedicationIntake>> watchMedicationIntakes() {
-    return _watchCollection(_intakesSubcollection, 'takenAt', intakeFromMap);
-  }
-
-  @override
-  Stream<List<BiometricMeasurement>> watchBiometricMeasurements() {
-    return _watchCollection(
-      _biometricsSubcollection,
-      'measuredAt',
-      biometricFromMap,
-    );
-  }
-
-  /// Escucha los cambios de autenticación para reaccionar a inicios y
-  /// cierres de sesión, y por cada estado escucha la subcolección
-  /// [name] del usuario actual (vacía si nadie tiene sesión iniciada),
-  /// ordenada de la más reciente a la más antigua por [dateField].
-  Stream<List<T>> _watchCollection<T>(
-    String name,
-    String dateField,
-    T Function(Map<String, Object?>) fromMap,
-  ) {
-    return _firebaseAuth.authStateChanges().asyncExpand((user) {
-      if (user == null) {
-        return Stream<List<T>>.value(const []);
-      }
-      return _subcollection(user.uid, name)
-          .orderBy(dateField, descending: true)
-          .snapshots()
-          .map(
-            (snapshot) => snapshot.docs.map((d) => fromMap(d.data())).toList(),
-          );
-    });
   }
 }

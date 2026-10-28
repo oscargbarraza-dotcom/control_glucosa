@@ -2104,6 +2104,71 @@ Prioridad futura:
 
 # Historial de cambios
 
+## 2026-10-28 (c) — Migración del visor de escritorio a `glucosa_desktop` (Python/Streamlit)
+
+Reemplaza por completo el visor de solo lectura en Flutter para Windows/macOS (`CloudViewerScreen`,
+documentado en "2026-10-20 — Sincronización en tiempo real") por un subproyecto Python independiente ya
+existente y mucho más avanzado, importado como subcarpeta de este monorepo.
+
+**Motivación**: el usuario ya tenía un proyecto separado (`_glucosa`, repo git local propio, 4 commits)
+construido específicamente para este propósito: visor Windows de solo lectura sobre los mismos datos de
+Firestore (`users/{uid}/...`), con módulos de Glucosa y Alimentación ya completados (importador de
+LibreView, dashboards con indicadores/gráficos/tablas, auditoría de calidad de datos, login Google
+OAuth+PKCE verificado con cuenta real, almacenamiento local cifrado). Mantener dos implementaciones del
+mismo visor (la Flutter incompleta y sin probar en escritorio real, y la Python ya validada) no tenía
+sentido.
+
+**Decisión de alcance** (confirmada explícitamente con el usuario antes de implementar):
+
+* Windows: se cubre exclusivamente con `glucosa_desktop/` (Python). Se elimina la carpeta `windows/`
+  generada por Flutter, las apps Firebase registradas para Windows y toda referencia a Windows en el
+  código Flutter.
+* macOS: se elimina también la carpeta `macos/` y su app Firebase. El visor Flutter cubría Windows y
+  macOS con la misma pantalla (`CloudViewerScreen`); al quitar Windows no tenía sentido mantener solo
+  macOS sin una necesidad concreta que lo justifique. macOS queda **sin alternativa** por ahora.
+* Linux conserva su carpeta de Flutter sin cambios (excepción ya documentada: sigue sobre SQLite local,
+  sin sincronización en la nube).
+* El proyecto Flutter queda enfocado en Android/iOS, con Linux como excepción documentada sin
+  sincronización.
+
+**Migración técnica**: `git subtree add --prefix=glucosa_desktop <ruta_local>/_glucosa main` (sin
+`--squash`), trayendo los 4 commits originales con su historial completo en vez de copiar solo el
+snapshot actual. `glucosa_desktop/` es un subproyecto Python autocontenido (`pyproject.toml`, `ruff`,
+`pytest`, entorno virtual propio fuera de OneDrive) con su propio `README.md`/`PROJECT_CONTEXT.md`; no
+comparte dependencias, build ni CI con el proyecto Flutter.
+
+**Código Flutter eliminado**:
+
+* `lib/screens/cloud_viewer_screen.dart` (`CloudViewerScreen` y sus widgets internos).
+* `lib/services/firestore_cloud_sync_viewer.dart` (`FirestoreCloudSyncViewer`).
+* La interfaz `CloudSyncViewer` completa en `lib/services/cloud_sync_repository.dart` (los cuatro
+  métodos `watch*`), y su implementación en `FirestoreCloudSyncRepository` (incluido el helper privado
+  `_watchCollection`): ya no tienen ningún consumidor, puesto que el único código que los invocaba era
+  el visor de escritorio eliminado. `CloudSyncRepository` ahora implementa únicamente
+  `CloudDataDeletionRepository` (más los métodos `push*`/`pullMissingFromCloud` que sí sigue usando
+  `HomeScreen` en Android/iOS).
+* Carpetas `windows/` y `macos/` completas (generadas por `flutter create`), las apps Firebase
+  `windows`/`macos` en `firebase.json` y `lib/firebase_options.dart` (`FirebaseOptions.windows`,
+  `FirebaseOptions.macos`), y la configuración `windows`/`macos` de `flutter_launcher_icons` en
+  `pubspec.yaml`.
+* `defaultTargetPlatform == TargetPlatform.macOS` como caso válido de `supportsGoogleSignIn`
+  (`FirebaseAuthRepository`) y `Platform.isMacOS` en `_supportsGoogleSignIn` (`main.dart`): ya no hay
+  ninguna plataforma de escritorio compilable donde Google Sign-In pudiera funcionar.
+* `main.dart`: eliminado por completo `_homeForCurrentPlatform`'s `if (Platform.isWindows ||
+  Platform.isMacOS)` (construía `CloudViewerScreen`); ahora siempre construye `HomeScreen` completo.
+
+**Tests** (`test/widget_test.dart`): se quitaron los cuatro métodos `watch*` de
+`_FakeCloudSyncRepository` (ya no los exige la interfaz); el resto de los 135 tests no tocaba el visor de
+escritorio y sigue pasando sin cambios.
+
+**Validación**: `flutter analyze` → *No issues found!*; `flutter test` → *All tests passed!* (135/135,
+mismo número que antes: el visor de escritorio nunca tuvo tests de widgets propios, ver limitación ya
+documentada en la entrada "2026-10-20").
+
+**Pendiente**: validar manualmente `glucosa_desktop/` en una máquina Windows real (login Google
+OAuth+PKCE, lectura de Firestore, auditoría de datos); no fue posible en este entorno. Ver el estado y
+roadmap propios de ese subproyecto en `glucosa_desktop/README.md` y `glucosa_desktop/PROJECT_CONTEXT.md`.
+
 ## 2026-10-28 (b) — APK de release para compartir y aclaración de stack tecnológico (no Python)
 
 * Se generó un nuevo `app-release.apk` (`flutter build apk --release`)
@@ -2844,6 +2909,12 @@ instalar por cable.
     código generado del plugin, no del proyecto.
 
 ## 2026-10-20 — Sincronización en tiempo real: push/pull automático en Android/iOS y visor de solo lectura en Windows/macOS
+
+> **Actualización (2026-10-28):** el visor de solo lectura en Windows/macOS descrito en esta entrada
+> (`CloudViewerScreen`, `FirestoreCloudSyncViewer`, `CloudSyncViewer`) **fue eliminado por completo** y
+> reemplazado por el subproyecto Python `glucosa_desktop/` (solo Windows). macOS quedó sin alternativa.
+> Ver "2026-10-28 (c) — Migración del visor de escritorio a `glucosa_desktop`". El resto de esta entrada
+> (sincronización automática push/pull en Android/iOS) sigue vigente sin cambios.
 
 Reemplaza por completo el respaldo manual (botones "Respaldar"/
 "Restaurar"/"Fusionar" de la entrada anterior) por sincronización

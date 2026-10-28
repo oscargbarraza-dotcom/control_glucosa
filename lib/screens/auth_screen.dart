@@ -42,9 +42,7 @@ class AuthScreen extends StatefulWidget {
   final CloudDataDeletionRepository? cloudDataDeletionRepository;
 
   /// Callback opcional para borrar también los datos locales del
-  /// dispositivo (SQLite, perfil, recordatorios y catálogos). En el
-  /// visor de escritorio es `null` porque no existe almacenamiento
-  /// local; la eliminación de cuenta y nube sigue disponible.
+  /// dispositivo (SQLite, perfil, recordatorios y catálogos).
   final Future<void> Function()? deleteLocalData;
 
   @override

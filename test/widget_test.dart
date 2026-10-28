@@ -440,21 +440,6 @@ class _FakeCloudSyncRepository implements CloudSyncRepository {
     return pullResult;
   }
 
-  @override
-  Stream<List<GlucoseMeasurement>> watchGlucoseMeasurements() =>
-      Stream.value(const []);
-
-  @override
-  Stream<List<Meal>> watchMeals() => Stream.value(const []);
-
-  @override
-  Stream<List<MedicationIntake>> watchMedicationIntakes() =>
-      Stream.value(const []);
-
-  @override
-  Stream<List<BiometricMeasurement>> watchBiometricMeasurements() =>
-      Stream.value(const []);
-
   /// Si no es `null`, la próxima llamada a [deleteAllCloudData]
   /// lanzará esta excepción en lugar de "eliminar" los datos.
   CloudSyncException? failDeleteWith;
